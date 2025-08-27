@@ -78,6 +78,25 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/* Ensure videos in fullscreen scale to fit the viewport instead of overflowing */
+video:fullscreen,
+video:-webkit-full-screen,
+video:-moz-full-screen,
+video:-ms-fullscreen {
+  object-fit: contain !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+}
+
+/* Also apply to the container if a wrapper element is made fullscreen */
+:-webkit-full-screen video,
+:-moz-full-screen video,
+:fullscreen video {
+  object-fit: contain !important;
+}
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

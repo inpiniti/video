@@ -1,8 +1,15 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { Play } from "lucide-react";
 
-type FileEntry = string;
+type FileEntry =
+  | string
+  | {
+      title?: string;
+      date?: string;
+      url: string;
+    };
 
 export default function VideoGrid(): React.ReactElement {
   const [files, setFiles] = useState<FileEntry[] | null>(null);
@@ -34,7 +41,17 @@ export default function VideoGrid(): React.ReactElement {
   if (!files) return <div className="p-4">Loading videos…</div>;
 
   const parseFile = (name: string) => {
-    const base = name.replace(/\.[^.]+$/, "");
+    // If name is a URL, extract the final path segment first
+    let base = name;
+    try {
+      if (/^https?:\/\//i.test(name)) {
+        const u = new URL(name);
+        base = u.pathname.split("/").filter(Boolean).pop() || name;
+      }
+    } catch {
+      base = name;
+    }
+    base = base.replace(/\.[^.]+$/, "");
     const m = base.match(/^(\d{4})[_-]?(\d{2})[_-]?(\d{2})[_-_]?(.*)$/);
     if (m) {
       const year = m[1];
@@ -58,9 +75,41 @@ export default function VideoGrid(): React.ReactElement {
   };
 
   function VideoCard({ file }: { file: FileEntry }): React.ReactElement {
-    const { title, date } = parseFile(file);
-    const [poster, setPoster] = useState<string | null>(null);
+    // Simple local Badge component (minimal shadcn-style substitute)
+    function Badge({ children }: { children: React.ReactNode }) {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800 mr-2">
+          {children}
+        </span>
+      );
+    }
+    // Normalize entry: accept string or object { title?, date?, url }
+    const raw = typeof file === "string" ? file : file.url;
+    const src = /^https?:\/\//i.test(raw)
+      ? raw
+      : `/aom_yumi/${encodeURIComponent(raw)}`;
+    const isUrl = /^https?:\/\//i.test(raw);
+
+    const parsed = parseFile(raw);
+    const title =
+      typeof file === "string" ? parsed.title : file.title ?? parsed.title;
+    const date =
+      typeof file === "string" ? parsed.date : file.date ?? parsed.date;
+
+    // If the entry is an object with a URL, extract the host to show as a badge
+    let domain: string | null = null;
+    if (typeof file !== "string") {
+      try {
+        const u = new URL(file.url);
+        domain = u.hostname.replace(/^www\./, "");
+      } catch {
+        domain = null;
+      }
+    }
+    const [poster, setPoster] = useState<string | null>();
+    const [isPlaying, setIsPlaying] = useState(false);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const videoRef = useRef<HTMLVideoElement | null>(null);
     const generatedRef = useRef(false);
 
     useEffect(() => {
@@ -68,27 +117,70 @@ export default function VideoGrid(): React.ReactElement {
       const el = containerRef.current;
 
       const tryServerThumb = async (): Promise<boolean> => {
-        const thumbPath = `/aom_yumi_thumbs/${encodeURIComponent(file)}.jpg`;
+        // For local files we probe the local thumbs folder.
+        if (!isUrl) {
+          const thumbPath = `/aom_yumi_thumbs/${encodeURIComponent(raw)}.jpg`;
+          try {
+            const res = await fetch(thumbPath, { method: "HEAD" });
+            if (res.ok) {
+              setPoster(thumbPath);
+              return true;
+            }
+          } catch {
+            // ignore
+          }
+          return false;
+        }
+
+        // For remote URLs: ask the server to generate/cache a thumbnail.
         try {
-          const res = await fetch(thumbPath, { method: "HEAD" });
-          if (res.ok) {
-            setPoster(thumbPath);
+          const api = `/api/thumbnail?url=${encodeURIComponent(raw)}`;
+          const res = await fetch(api);
+          if (!res.ok) return false;
+          const data = await res.json();
+          if (data && data.url) {
+            setPoster(data.url);
             return true;
           }
-        } catch (e) {
-          // ignore
+        } catch {
+          // ignore and fall through to heuristics below
+        }
+
+        // Heuristic fallbacks (best-effort): set probable jpg paths and let browser try
+        try {
+          const u = new URL(raw);
+          const pathPoster = `${u.origin}${u.pathname.replace(
+            /\.[^.]+$/,
+            ".jpg"
+          )}`;
+          setPoster(pathPoster);
+          return true;
+        } catch {
+          try {
+            setPoster(raw.replace(/\.[^.]+(?=$|[?#])/, ".jpg"));
+            return true;
+          } catch {
+            try {
+              setPoster(raw + ".jpg");
+              return true;
+            } catch {
+              // give up
+            }
+          }
         }
         return false;
       };
 
       const generateThumb = async (): Promise<void> => {
+        // Only generate thumbnails for local files (avoids CORS problems for remote URLs)
+        if (isUrl) return;
         if (generatedRef.current) return;
         generatedRef.current = true;
         try {
           const vid = document.createElement("video");
           vid.crossOrigin = "anonymous";
           vid.preload = "metadata";
-          vid.src = `/aom_yumi/${encodeURIComponent(file)}`;
+          vid.src = src;
 
           await new Promise<void>((resolve, reject) => {
             const onLoaded = () => resolve();
@@ -114,7 +206,7 @@ export default function VideoGrid(): React.ReactElement {
           ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
           const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
           setPoster(dataUrl);
-        } catch (e) {
+        } catch {
           // ignore - poster remains null
         }
       };
@@ -145,21 +237,35 @@ export default function VideoGrid(): React.ReactElement {
       return () => {
         if (obs) obs.disconnect();
       };
-    }, [file]);
+    }, [raw, src, isUrl]);
 
     return (
       <div ref={containerRef} className="flex flex-col">
-        <div className="rounded-xl overflow-hidden w-full bg-black">
+        <div className="relative rounded-xl overflow-hidden w-full bg-black">
           <video
+            ref={videoRef}
             className="w-full h-full object-cover aspect-[9/16]"
+            style={{ maxHeight: "80vh" }}
             controls
             playsInline
             preload="metadata"
-            poster={poster ?? "/file.svg"}
-            src={`/aom_yumi/${encodeURIComponent(file)}`}
+            poster={poster || ""}
+            src={src}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
           />
+
+          {/* Centered Play icon overlay shown when there is no poster and video not playing */}
+          {!poster && !isPlaying && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <Play className="w-12 h-12 text-white/90 drop-shadow" />
+            </div>
+          )}
         </div>
         <div className="p-3">
+          <div className="flex items-center">
+            {domain && <Badge>{domain}</Badge>}
+          </div>
           <div className="font-semibold text-sm text-black">{title}</div>
           <div className="text-xs text-gray-400">{date}</div>
         </div>
@@ -168,10 +274,11 @@ export default function VideoGrid(): React.ReactElement {
   }
 
   return (
-    <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 md:grid-cols-3">
-      {files!.map((f) => (
-        <VideoCard key={f} file={f} />
-      ))}
+    <div className="grid auto-rows-fr gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+      {files!.map((f, i) => {
+        const key = typeof f === "string" ? f : f.url ?? f.title ?? String(i);
+        return <VideoCard key={key} file={f} />;
+      })}
     </div>
   );
 }
