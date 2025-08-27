@@ -98,4 +98,40 @@ Next steps (optional)
 - Add a build-step script that runs ffmpeg to create `public/aom_yumi_thumbs` for all videos.
 - Add a lightbox/fullscreen player for better viewing on click.
 
+## Supabase integration (optional)
+
+This project can read/write the video catalog from a Supabase table instead of the local JSON file. To enable:
+
+1. Create a Supabase project and get the Project URL and Anon Key. Set these env vars in your development environment or `.env.local`:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+2. Create a `videos` table in Supabase. Example SQL:
+
+```sql
+create table public.videos (
+	id bigserial primary key,
+	title text,
+	date date,
+	url text not null,
+	actor text,
+	created_at timestamptz default now()
+);
+
+-- optional index for ordering
+create index on public.videos (id);
+```
+
+3. UI: a small dialog was added at `components/add-video-dialog.tsx` which uses the Supabase client to insert records into `videos`.
+
+4. Behavior: when Supabase env vars are set, `components/video-grid.tsx` will try to fetch from the `videos` table. If Supabase is not configured or the fetch fails, it falls back to `public/aom_yumi.json`.
+
+5. Notes:
+- The Supabase client is in `lib/supabaseClient.ts` and reads `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+- Make sure to `npm install` after the added dependency `@supabase/supabase-js`.
+
+
 If you want, I can implement any of the next steps now (pick one) and also remove the leftover lint warnings.

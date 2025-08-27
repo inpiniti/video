@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Play } from "lucide-react";
+import AddVideoDialog from "./add-video-dialog";
+import { supabase } from "@/lib/supabaseClient";
 
 type FileEntry =
   | string
@@ -14,23 +16,75 @@ type FileEntry =
 export default function VideoGrid(): React.ReactElement {
   const [files, setFiles] = useState<FileEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [usingSupabase, setUsingSupabase] = useState<boolean | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    fetch("/aom_yumi.json")
-      .then((res) => {
+
+    const load = async () => {
+      let triedSupabase = false;
+
+      // Only attempt Supabase if public env vars are present
+      if (
+        process.env.NEXT_PUBLIC_SUPABASE_URL &&
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      ) {
+        triedSupabase = true;
+        try {
+          const { data, error } = await supabase
+            .from("videos")
+            .select("title,date,url,actor")
+            .order("id", { ascending: true })
+            .limit(1000);
+          if (!mounted) return;
+          if (!error && Array.isArray(data)) {
+            setUsingSupabase(true);
+            const arr = data as unknown[];
+            const mapped = arr
+              .map((x) => {
+                if (x && typeof x === "object") {
+                  const y = x as Record<string, unknown>;
+                  const url = typeof y.url === "string" ? y.url : undefined;
+                  const title =
+                    typeof y.title === "string" ? y.title : undefined;
+                  const date = typeof y.date === "string" ? y.date : undefined;
+                  if (url) return { title, date, url };
+                }
+                return null;
+              })
+              .filter(Boolean) as {
+              title?: string;
+              date?: string;
+              url: string;
+            }[];
+            setFiles(mapped);
+            return;
+          }
+          // if response came back but no data, mark failure
+          setUsingSupabase(false);
+        } catch (err) {
+          console.warn("supabase fetch failed", err);
+          setUsingSupabase(false);
+        }
+      }
+
+      // Fallback to local JSON if Supabase is not configured or failed
+      try {
+        const res = await fetch("/aom_yumi.json");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
+        const data = await res.json();
         if (!mounted) return;
-        if (Array.isArray(data)) setFiles(data as FileEntry[]);
-        else setError("Invalid JSON format");
-      })
-      .catch((err) => {
+        if (Array.isArray(data)) {
+          if (triedSupabase) setUsingSupabase(false);
+          setFiles(data as FileEntry[]);
+        } else setError("Invalid JSON format");
+      } catch (err) {
         if (!mounted) return;
         setError(String(err));
-      });
+      }
+    };
+
+    load();
 
     return () => {
       mounted = false;
@@ -274,11 +328,65 @@ export default function VideoGrid(): React.ReactElement {
   }
 
   return (
-    <div className="grid auto-rows-fr gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-      {files!.map((f, i) => {
-        const key = typeof f === "string" ? f : f.url ?? f.title ?? String(i);
-        return <VideoCard key={key} file={f} />;
-      })}
+    <div>
+      <div className="flex flex-col items-center justify-between mb-4">
+        <div>
+          {usingSupabase === false && (
+            <div className="text-sm text-yellow-700">
+              Supabase configured but unreachable — using local JSON fallback.
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <AddVideoDialog
+            onAdded={() => {
+              // refresh list after add
+              (async () => {
+                try {
+                  const { data } = await supabase
+                    .from("videos")
+                    .select("title,date,url,actor")
+                    .order("id", { ascending: true })
+                    .limit(1000);
+                  if (Array.isArray(data)) {
+                    const arr = data as unknown[];
+                    const mapped = arr
+                      .map((x) => {
+                        if (x && typeof x === "object") {
+                          const y = x as Record<string, unknown>;
+                          const url =
+                            typeof y.url === "string" ? y.url : undefined;
+                          const title =
+                            typeof y.title === "string" ? y.title : undefined;
+                          const date =
+                            typeof y.date === "string" ? y.date : undefined;
+                          if (url) return { title, date, url };
+                        }
+                        return null;
+                      })
+                      .filter(Boolean) as {
+                      title?: string;
+                      date?: string;
+                      url: string;
+                    }[];
+                    setFiles(mapped);
+                  }
+                } catch (e) {
+                  console.warn(e);
+                }
+              })();
+            }}
+          />
+        </div>
+
+        <div className="grid auto-rows-fr gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          {files!.map((f, i) => {
+            const key =
+              typeof f === "string" ? f : f.url ?? f.title ?? String(i);
+            return <VideoCard key={key} file={f} />;
+          })}
+        </div>
+      </div>
     </div>
   );
 }
