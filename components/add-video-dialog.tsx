@@ -7,7 +7,7 @@ import {
   DialogContent,
   DialogClose,
 } from "@/components/ui/dialog";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase, hasSupabase } from "@/lib/supabaseClient";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { SidebarMenuButton } from "./ui/sidebar";
@@ -36,6 +36,9 @@ export default function AddVideoDialog({
         date?: string;
       };
       const payload: Payload = { title, url, actor, date };
+      if (!hasSupabase() || !supabase) {
+        throw new Error("Supabase not configured");
+      }
       const { error } = await supabase.from("videos").insert(payload);
       if (error) throw error;
       setOpen(false);

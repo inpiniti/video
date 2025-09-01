@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase, hasSupabase } from "@/lib/supabaseClient";
 import {
   Dialog,
   DialogTrigger,
@@ -30,6 +30,7 @@ export function EditVideoDialog({ video }: { video: EditVideoData }) {
   const submit = async () => {
     setLoading(true);
     try {
+      if (!hasSupabase() || !supabase) throw new Error("Supabase not configured");
       const { error } = await supabase
         .from("videos")
         .update({
