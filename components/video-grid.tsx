@@ -3,13 +3,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Play } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { EditVideoDialog } from "./edit-video-dialog";
 
 type FileEntry =
   | string
   | {
+      id?: number;
       title?: string;
       date?: string;
       url: string;
+      actor?: string;
     };
 
 export default function VideoGrid(): React.ReactElement {
@@ -26,7 +29,7 @@ export default function VideoGrid(): React.ReactElement {
       ) {
         const { data, error } = await supabase
           .from("videos")
-          .select("title,date,url,actor")
+          .select("id,title,date,url,actor")
           .order("id", { ascending: true })
           .limit(1000);
         if (!error && Array.isArray(data)) {
@@ -38,11 +41,18 @@ export default function VideoGrid(): React.ReactElement {
                 const url = typeof y.url === "string" ? y.url : undefined;
                 const title = typeof y.title === "string" ? y.title : undefined;
                 const date = typeof y.date === "string" ? y.date : undefined;
-                if (url) return { title, date, url };
+                const actor = typeof y.actor === "string" ? y.actor : undefined;
+                let id: number | undefined;
+                if (typeof y.id === "number") id = y.id;
+                else if (typeof y.id === "string") {
+                  const parsed = parseInt(y.id, 10);
+                  if (!isNaN(parsed)) id = parsed;
+                }
+                if (url) return { id, title, date, url, actor };
               }
               return null;
             })
-            .filter(Boolean) as { title?: string; date?: string; url: string }[];
+            .filter(Boolean) as { id?: number; title?: string; date?: string; url: string; actor?: string }[];
           setFiles(mapped);
           setUsingSupabase(true);
         }
@@ -67,7 +77,7 @@ export default function VideoGrid(): React.ReactElement {
         try {
           const { data, error } = await supabase
             .from("videos")
-            .select("title,date,url,actor")
+            .select("id,title,date,url,actor")
             .order("id", { ascending: true })
             .limit(1000);
           if (!mounted) return;
@@ -79,17 +89,25 @@ export default function VideoGrid(): React.ReactElement {
                 if (x && typeof x === "object") {
                   const y = x as Record<string, unknown>;
                   const url = typeof y.url === "string" ? y.url : undefined;
-                  const title =
-                    typeof y.title === "string" ? y.title : undefined;
+                  const title = typeof y.title === "string" ? y.title : undefined;
                   const date = typeof y.date === "string" ? y.date : undefined;
-                  if (url) return { title, date, url };
+                  const actor = typeof y.actor === "string" ? y.actor : undefined;
+                  let id: number | undefined;
+                  if (typeof y.id === "number") id = y.id;
+                  else if (typeof y.id === "string") {
+                    const parsed = parseInt(y.id, 10);
+                    if (!isNaN(parsed)) id = parsed;
+                  }
+                  if (url) return { id, title, date, url, actor };
                 }
                 return null;
               })
               .filter(Boolean) as {
+              id?: number;
               title?: string;
               date?: string;
               url: string;
+              actor?: string;
             }[];
             setFiles(mapped);
             return;
@@ -125,17 +143,19 @@ export default function VideoGrid(): React.ReactElement {
     };
   }, []);
 
-  // Listen for global event fired after insertion.
+  // Listen for global events fired after insertion or update.
   useEffect(() => {
     const handler = () => {
       refreshFromSupabase();
     };
     if (typeof window !== "undefined") {
       window.addEventListener("video-added", handler as EventListener);
+      window.addEventListener("video-updated", handler as EventListener);
     }
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("video-added", handler as EventListener);
+        window.removeEventListener("video-updated", handler as EventListener);
       }
     };
   }, []);
@@ -198,6 +218,8 @@ export default function VideoGrid(): React.ReactElement {
       typeof file === "string" ? parsed.title : file.title ?? parsed.title;
     const date =
       typeof file === "string" ? parsed.date : file.date ?? parsed.date;
+    const actor = typeof file !== "string" ? file.actor : undefined;
+    const id = typeof file !== "string" ? file.id : undefined;
 
     // If the entry is an object with a URL, extract the host to show as a badge
     let domain: string | null = null;
@@ -365,12 +387,24 @@ export default function VideoGrid(): React.ReactElement {
             </div>
           )}
         </div>
-        <div className="p-3">
-          <div className="flex items-center">
+        <div className="p-3 space-y-1">
+          <div className="flex items-center gap-2">
             {domain && <Badge>{domain}</Badge>}
+            {actor && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">
+                {actor}
+              </span>
+            )}
           </div>
-          <div className="font-semibold text-sm text-black">{title}</div>
-          <div className="text-xs text-gray-400">{date}</div>
+          <div className="font-semibold text-sm text-black line-clamp-2">{title}</div>
+          <div className="text-[11px] text-gray-400 flex items-center justify-between">
+            <span>{date}</span>
+            {id && usingSupabase && (
+              <EditVideoDialog
+                video={{ id, title: title || null, date: file && typeof file !== 'string' ? file.date ?? null : null, url: src, actor: actor || null }}
+              />
+            )}
+          </div>
         </div>
       </div>
     );
