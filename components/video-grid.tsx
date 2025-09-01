@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Play } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase, hasSupabase } from "@/lib/supabaseClient";
 import { EditVideoDialog } from "./edit-video-dialog";
 
 type FileEntry =
@@ -23,10 +23,7 @@ export default function VideoGrid(): React.ReactElement {
   // Helper: fetch current rows from Supabase and update state (no JSON fallback here).
   const refreshFromSupabase = async () => {
     try {
-      if (
-        process.env.NEXT_PUBLIC_SUPABASE_URL &&
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      ) {
+  if (hasSupabase() && supabase) {
         const { data, error } = await supabase
           .from("videos")
           .select("id,title,date,url,actor")
@@ -69,10 +66,7 @@ export default function VideoGrid(): React.ReactElement {
       let triedSupabase = false;
 
       // Only attempt Supabase if public env vars are present
-      if (
-        process.env.NEXT_PUBLIC_SUPABASE_URL &&
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      ) {
+  if (hasSupabase() && supabase) {
         triedSupabase = true;
         try {
           const { data, error } = await supabase
@@ -148,7 +142,7 @@ export default function VideoGrid(): React.ReactElement {
     const handler = () => {
       refreshFromSupabase();
     };
-    if (typeof window !== "undefined") {
+  if (typeof window !== "undefined") {
       window.addEventListener("video-added", handler as EventListener);
       window.addEventListener("video-updated", handler as EventListener);
     }
