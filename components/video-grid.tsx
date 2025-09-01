@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Play } from "lucide-react";
-import AddVideoDialog from "./add-video-dialog";
 import { supabase } from "@/lib/supabaseClient";
 
 type FileEntry =
@@ -17,6 +16,41 @@ export default function VideoGrid(): React.ReactElement {
   const [files, setFiles] = useState<FileEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [usingSupabase, setUsingSupabase] = useState<boolean | null>(null);
+
+  // Helper: fetch current rows from Supabase and update state (no JSON fallback here).
+  const refreshFromSupabase = async () => {
+    try {
+      if (
+        process.env.NEXT_PUBLIC_SUPABASE_URL &&
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      ) {
+        const { data, error } = await supabase
+          .from("videos")
+          .select("title,date,url,actor")
+          .order("id", { ascending: true })
+          .limit(1000);
+        if (!error && Array.isArray(data)) {
+          const arr = data as unknown[];
+          const mapped = arr
+            .map((x) => {
+              if (x && typeof x === "object") {
+                const y = x as Record<string, unknown>;
+                const url = typeof y.url === "string" ? y.url : undefined;
+                const title = typeof y.title === "string" ? y.title : undefined;
+                const date = typeof y.date === "string" ? y.date : undefined;
+                if (url) return { title, date, url };
+              }
+              return null;
+            })
+            .filter(Boolean) as { title?: string; date?: string; url: string }[];
+          setFiles(mapped);
+          setUsingSupabase(true);
+        }
+      }
+    } catch (e) {
+      console.warn("refreshFromSupabase failed", e);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -88,6 +122,21 @@ export default function VideoGrid(): React.ReactElement {
 
     return () => {
       mounted = false;
+    };
+  }, []);
+
+  // Listen for global event fired after insertion.
+  useEffect(() => {
+    const handler = () => {
+      refreshFromSupabase();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("video-added", handler as EventListener);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("video-added", handler as EventListener);
+      }
     };
   }, []);
 
@@ -337,47 +386,7 @@ export default function VideoGrid(): React.ReactElement {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <AddVideoDialog
-            onAdded={() => {
-              // refresh list after add
-              (async () => {
-                try {
-                  const { data } = await supabase
-                    .from("videos")
-                    .select("title,date,url,actor")
-                    .order("id", { ascending: true })
-                    .limit(1000);
-                  if (Array.isArray(data)) {
-                    const arr = data as unknown[];
-                    const mapped = arr
-                      .map((x) => {
-                        if (x && typeof x === "object") {
-                          const y = x as Record<string, unknown>;
-                          const url =
-                            typeof y.url === "string" ? y.url : undefined;
-                          const title =
-                            typeof y.title === "string" ? y.title : undefined;
-                          const date =
-                            typeof y.date === "string" ? y.date : undefined;
-                          if (url) return { title, date, url };
-                        }
-                        return null;
-                      })
-                      .filter(Boolean) as {
-                      title?: string;
-                      date?: string;
-                      url: string;
-                    }[];
-                    setFiles(mapped);
-                  }
-                } catch (e) {
-                  console.warn(e);
-                }
-              })();
-            }}
-          />
-        </div>
+        <div className="flex items-center gap-2" />
 
         <div className="grid auto-rows-fr gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {files!.map((f, i) => {
