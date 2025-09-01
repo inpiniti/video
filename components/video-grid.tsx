@@ -23,7 +23,7 @@ export default function VideoGrid(): React.ReactElement {
   // Helper: fetch current rows from Supabase and update state (no JSON fallback here).
   const refreshFromSupabase = async () => {
     try {
-  if (hasSupabase() && supabase) {
+      if (hasSupabase() && supabase) {
         const { data, error } = await supabase
           .from("videos")
           .select("id,title,date,url,actor")
@@ -49,7 +49,13 @@ export default function VideoGrid(): React.ReactElement {
               }
               return null;
             })
-            .filter(Boolean) as { id?: number; title?: string; date?: string; url: string; actor?: string }[];
+            .filter(Boolean) as {
+            id?: number;
+            title?: string;
+            date?: string;
+            url: string;
+            actor?: string;
+          }[];
           setFiles(mapped);
           setUsingSupabase(true);
         }
@@ -66,7 +72,7 @@ export default function VideoGrid(): React.ReactElement {
       let triedSupabase = false;
 
       // Only attempt Supabase if public env vars are present
-  if (hasSupabase() && supabase) {
+      if (hasSupabase() && supabase) {
         triedSupabase = true;
         try {
           const { data, error } = await supabase
@@ -83,9 +89,11 @@ export default function VideoGrid(): React.ReactElement {
                 if (x && typeof x === "object") {
                   const y = x as Record<string, unknown>;
                   const url = typeof y.url === "string" ? y.url : undefined;
-                  const title = typeof y.title === "string" ? y.title : undefined;
+                  const title =
+                    typeof y.title === "string" ? y.title : undefined;
                   const date = typeof y.date === "string" ? y.date : undefined;
-                  const actor = typeof y.actor === "string" ? y.actor : undefined;
+                  const actor =
+                    typeof y.actor === "string" ? y.actor : undefined;
                   let id: number | undefined;
                   if (typeof y.id === "number") id = y.id;
                   else if (typeof y.id === "string") {
@@ -142,7 +150,7 @@ export default function VideoGrid(): React.ReactElement {
     const handler = () => {
       refreshFromSupabase();
     };
-  if (typeof window !== "undefined") {
+    if (typeof window !== "undefined") {
       window.addEventListener("video-added", handler as EventListener);
       window.addEventListener("video-updated", handler as EventListener);
     }
@@ -382,20 +390,29 @@ export default function VideoGrid(): React.ReactElement {
           )}
         </div>
         <div className="p-3 space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 w-fit">
             {domain && <Badge>{domain}</Badge>}
             {actor && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">
+              <span className="text-[10px] w-fit px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">
                 {actor}
               </span>
             )}
           </div>
-          <div className="font-semibold text-sm text-black line-clamp-2">{title}</div>
+          <div className="font-semibold text-sm text-black line-clamp-2">
+            {title}
+          </div>
           <div className="text-[11px] text-gray-400 flex items-center justify-between">
             <span>{date}</span>
             {id && usingSupabase && (
               <EditVideoDialog
-                video={{ id, title: title || null, date: file && typeof file !== 'string' ? file.date ?? null : null, url: src, actor: actor || null }}
+                video={{
+                  id,
+                  title: title || null,
+                  date:
+                    file && typeof file !== "string" ? file.date ?? null : null,
+                  url: src,
+                  actor: actor || null,
+                }}
               />
             )}
           </div>
