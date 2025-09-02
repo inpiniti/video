@@ -307,32 +307,66 @@ export default function VideoGrid(): React.ReactElement {
           const vid = document.createElement("video");
           vid.crossOrigin = "anonymous";
           vid.preload = "metadata";
+          vid.muted = true; // mobile Safari allows loading/seek when muted
+          // @ts-expect-error playsInline for iOS Safari
+          vid.playsInline = true;
           vid.src = src;
 
-          await new Promise<void>((resolve, reject) => {
-            const onLoaded = () => resolve();
-            const onError = () => reject(new Error("video load error"));
-            vid.addEventListener("loadeddata", onLoaded, { once: true });
-            vid.addEventListener("error", onError, { once: true });
-          });
+          // Wait for metadata / canplay with timeout to avoid hanging on some mobile browsers
+            await new Promise<void>((resolve, reject) => {
+              let settled = false;
+              const timer = setTimeout(() => {
+                if (!settled) {
+                  settled = true;
+                  resolve(); // proceed with whatever we have
+                }
+              }, 5000);
+              const done = () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve();
+              };
+              const fail = () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                reject(new Error("video metadata load error"));
+              };
+              vid.addEventListener("loadedmetadata", done, { once: true });
+              vid.addEventListener("canplay", done, { once: true });
+              vid.addEventListener("error", fail, { once: true });
+            });
 
-          const seekTo = Math.min(1, vid.duration || 0);
-          await new Promise<void>((resolve, reject) => {
-            const onSeek = () => resolve();
-            const onError = () => reject(new Error("seek error"));
-            vid.currentTime = seekTo;
-            vid.addEventListener("seeked", onSeek, { once: true });
-            vid.addEventListener("error", onError, { once: true });
-          });
+          // Seek to 1s if possible; if duration shorter, use 0.1s
+          const seekTarget = Math.min(1, vid.duration > 0 ? vid.duration - 0.05 : 0.1);
+          if (seekTarget > 0) {
+            try {
+              await new Promise<void>((resolve) => {
+                const onSeek = () => resolve();
+                vid.currentTime = seekTarget;
+                vid.addEventListener("seeked", onSeek, { once: true });
+                // Fallback in case seek never fires
+                setTimeout(() => resolve(), 1200);
+              });
+            } catch {
+              // ignore seek failure
+            }
+          }
 
+          if (vid.videoWidth === 0 || vid.videoHeight === 0) return; // nothing to draw
           const canvas = document.createElement("canvas");
-          canvas.width = vid.videoWidth || 480;
-          canvas.height = vid.videoHeight || 854;
+          canvas.width = vid.videoWidth;
+          canvas.height = vid.videoHeight;
           const ctx = canvas.getContext("2d");
           if (!ctx) return;
-          ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-          setPoster(dataUrl);
+          try {
+            ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+            setPoster(dataUrl);
+          } catch {
+            // draw failed
+          }
         } catch {
           // ignore - poster remains null
         }

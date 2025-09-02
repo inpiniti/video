@@ -135,3 +135,27 @@ create index on public.videos (id);
 
 
 If you want, I can implement any of the next steps now (pick one) and also remove the leftover lint warnings.
+
+## Mobile thumbnail notes
+
+On some mobile browsers (notably iOS Safari/Chrome) initial client-side thumbnail generation can fail because:
+
+- Autoplay policies block loading enough data to seek when the video isn't muted / playsInline.
+- `loadeddata` may never fire quickly for large remote files; relying only on that event stalls the canvas capture.
+- Seeking to 1s on very short clips rejects silently.
+
+Mitigations implemented in `components/video-grid.tsx`:
+
+1. Offscreen probe video is created with `muted` and `playsInline` flags to allow metadata to load without user gesture.
+2. We wait for either `loadedmetadata` or `canplay` (whichever comes first) with a 5s timeout fallback.
+3. Seek target adapts to duration (uses `min(1, duration - 0.05)` and falls back to ~0.1s if duration is not yet known).
+4. A secondary timeout after a seek attempt prevents hanging if `seeked` never fires.
+5. If width/height are zero we abort quietly instead of throwing.
+
+If thumbnails still fail on specific devices you can further improve by:
+
+- Lowering the timeout or trying multiple frame positions.
+- Adding a server-side background job to pre-generate all missing thumbnails.
+- Persisting generated data URLs in localStorage to avoid re-capturing.
+
+Server pre-generation remains the most reliable for cross-browser consistency.
