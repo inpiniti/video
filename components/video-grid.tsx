@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { Play } from "lucide-react";
 import { supabase, hasSupabase } from "@/lib/supabaseClient";
 import { EditVideoDialog } from "./edit-video-dialog";
@@ -16,9 +17,22 @@ type FileEntry =
     };
 
 export default function VideoGrid(): React.ReactElement {
+  // Debug flag to trace thumbnail lifecycle in the console.
+  const THUMB_DEBUG = true;
   const [files, setFiles] = useState<FileEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [usingSupabase, setUsingSupabase] = useState<boolean | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // Close preview with ESC
+  useEffect(() => {
+    if (!previewImage) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPreviewImage(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewImage]);
 
   // Helper: fetch current rows from Supabase and update state (no JSON fallback here).
   const refreshFromSupabase = async () => {
@@ -199,7 +213,7 @@ export default function VideoGrid(): React.ReactElement {
     return { date: "", title: base };
   };
 
-  function VideoCard({ file }: { file: FileEntry }): React.ReactElement {
+  function VideoCard({ file, index, onImageClick }: { file: FileEntry; index: number; onImageClick: (url: string) => void }): React.ReactElement {
     // Simple local Badge component (minimal shadcn-style substitute)
     function Badge({ children }: { children: React.ReactNode }) {
       return (
@@ -215,7 +229,30 @@ export default function VideoGrid(): React.ReactElement {
       : `/aom_yumi/${encodeURIComponent(raw)}`;
     const isUrl = /^https?:\/\//i.test(raw);
 
-    const parsed = parseFile(raw);
+    // --- media type detection (by extension first) ---
+    const lowerPath = (() => {
+      try {
+        if (isUrl) {
+          const u = new URL(raw);
+          return u.pathname.toLowerCase();
+        }
+      } catch {}
+      return raw.toLowerCase();
+    })();
+    const extMatch = lowerPath.match(/\.([a-z0-9]+)(?:$|[?#])/);
+    const ext = extMatch ? extMatch[1] : "";
+    const IMAGE_EXTS = new Set(["jpg","jpeg","png","webp","gif","avif","bmp","svg"]);
+    const VIDEO_EXTS = new Set(["mp4","webm","mov","m4v","mkv","avi","ts","m3u8"]);
+    const { initialIsImage, initialIsVideo } = (() => {
+      const img = IMAGE_EXTS.has(ext);
+      const inferredVid = VIDEO_EXTS.has(ext) || (!ext && !isUrl);
+      const vid = img ? false : inferredVid; // if image, not video
+      return { initialIsImage: img, initialIsVideo: vid };
+    })();
+    const [isImage, setIsImage] = useState<boolean>(initialIsImage);
+    const [isVideo, setIsVideo] = useState<boolean>(initialIsVideo || !initialIsImage);
+
+  const parsed = parseFile(raw);
     const title =
       typeof file === "string" ? parsed.title : file.title ?? parsed.title;
     const date =
@@ -238,71 +275,92 @@ export default function VideoGrid(): React.ReactElement {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const generatedRef = useRef(false);
+  const [imgFailed, setImgFailed] = useState(false);
+
+    // If unknown extension & remote, lazily HEAD check when visible to confirm content-type (done inside intersection logic)
 
     useEffect(() => {
+      if (isImage) return; // no video thumb work needed
       let obs: IntersectionObserver | null = null;
       const el = containerRef.current;
+      const debugId = `${index}-${raw}`;
+      if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 1. effect mount (isUrl=${isUrl}, isImage=${isImage}, isVideo=${isVideo})`);
 
-      const tryServerThumb = async (): Promise<boolean> => {
+  const tryServerThumb = async (): Promise<boolean> => {
+        if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2. tryServerThumb start (isUrl=${isUrl})`);
         // For local files we probe the local thumbs folder.
         if (!isUrl) {
+          if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.1 local HEAD probe start`);
           const thumbPath = `/aom_yumi_thumbs/${encodeURIComponent(raw)}.jpg`;
           try {
             const res = await fetch(thumbPath, { method: "HEAD" });
             if (res.ok) {
               setPoster(thumbPath);
+              if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.1 local HEAD success => poster=${thumbPath}`);
               return true;
             }
           } catch {
             // ignore
           }
+          if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.1 local HEAD miss`);
           return false;
         }
 
         // For remote URLs: ask the server to generate/cache a thumbnail.
         try {
+          if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.2 remote API fetch start`);
           const api = `/api/thumbnail?url=${encodeURIComponent(raw)}`;
           const res = await fetch(api);
           if (!res.ok) return false;
           const data = await res.json();
           if (data && data.url) {
             setPoster(data.url);
+            if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.2 remote API success => poster=${data.url}`);
             return true;
           }
         } catch {
           // ignore and fall through to heuristics below
+          if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.2 remote API failed`);
         }
 
         // Heuristic fallbacks (best-effort): set probable jpg paths and let browser try
         try {
+          if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.3 heuristic path attempt #1 (.jpg replace)`);
           const u = new URL(raw);
           const pathPoster = `${u.origin}${u.pathname.replace(
             /\.[^.]+$/,
             ".jpg"
           )}`;
           setPoster(pathPoster);
+          if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.3 heuristic success pathPoster=${pathPoster}`);
           return true;
         } catch {
           try {
+            if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.3 heuristic attempt #2 (regex replace)`);
             setPoster(raw.replace(/\.[^.]+(?=$|[?#])/, ".jpg"));
+            if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.3 heuristic success #2`);
             return true;
           } catch {
             try {
+              if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.3 heuristic attempt #3 (append .jpg)`);
               setPoster(raw + ".jpg");
+              if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.3 heuristic success #3`);
               return true;
             } catch {
               // give up
+              if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.3 heuristic failed all attempts`);
             }
           }
         }
         return false;
       };
 
-      const generateThumb = async (): Promise<void> => {
+  const generateThumb = async (): Promise<void> => {
         // Only generate thumbnails for local files (avoids CORS problems for remote URLs)
         if (isUrl) return;
         if (generatedRef.current) return;
         generatedRef.current = true;
+        if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 3. generateThumb start (local capture)`);
         try {
           const vid = document.createElement("video");
           vid.crossOrigin = "anonymous";
@@ -310,6 +368,7 @@ export default function VideoGrid(): React.ReactElement {
           vid.muted = true; // mobile Safari allows loading/seek when muted
           vid.playsInline = true;
           vid.src = src;
+          if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 3.1 video element prepared src=${src}`);
 
           // Wait for metadata / canplay with timeout to avoid hanging on some mobile browsers
           await new Promise<void>((resolve, reject) => {
@@ -317,6 +376,7 @@ export default function VideoGrid(): React.ReactElement {
             const timer = setTimeout(() => {
               if (!settled) {
                 settled = true;
+                if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 3.2 metadata timeout fallback`);
                 resolve(); // proceed with whatever we have
               }
             }, 5000);
@@ -324,12 +384,14 @@ export default function VideoGrid(): React.ReactElement {
               if (settled) return;
               settled = true;
               clearTimeout(timer);
+              if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 3.2 metadata loaded`);
               resolve();
             };
             const fail = () => {
               if (settled) return;
               settled = true;
               clearTimeout(timer);
+              if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 3.2 metadata error`);
               reject(new Error("video metadata load error"));
             };
             vid.addEventListener("loadedmetadata", done, { once: true });
@@ -344,6 +406,7 @@ export default function VideoGrid(): React.ReactElement {
           );
           if (seekTarget > 0) {
             try {
+              if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 3.3 seeking to ${seekTarget.toFixed(2)}s (duration=${vid.duration})`);
               await new Promise<void>((resolve) => {
                 const onSeek = () => resolve();
                 vid.currentTime = seekTarget;
@@ -351,8 +414,10 @@ export default function VideoGrid(): React.ReactElement {
                 // Fallback in case seek never fires
                 setTimeout(() => resolve(), 1200);
               });
+              if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 3.3 seek complete`);
             } catch {
               // ignore seek failure
+              if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 3.3 seek failed`);
             }
           }
 
@@ -366,23 +431,47 @@ export default function VideoGrid(): React.ReactElement {
             ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
             const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
             setPoster(dataUrl);
+            if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 3.4 draw success -> poster(dataURL len=${dataUrl.length})`);
           } catch {
             // draw failed
+            if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 3.4 draw failed`);
           }
         } catch {
           // ignore - poster remains null
+          if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 3.x generateThumb exception`);
         }
       };
 
-      const onIntersect: IntersectionObserverCallback = (entries) => {
+  const onIntersect: IntersectionObserverCallback = (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
+    if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 4. intersect visible -> start process (isImage=${isImage})`);
+            // If we haven't determined type (unknown extension) and remote, attempt a HEAD to decide
+            if (isUrl && !ext && !isImage && !generatedRef.current) {
+              (async () => {
+                try {
+                if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 4.a HEAD probe for content-type start`);
+                const headRes = await fetch(src, { method: 'HEAD' });
+                const ct = headRes.headers.get('content-type') || '';
+                if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 4.a HEAD content-type='${ct}'`);
+                if (ct.startsWith('image/')) {
+                  setIsImage(true); setIsVideo(false);
+                  if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 4.a determined image; skipping video pipeline`);
+                  // no further video thumb work; disconnect observer
+                  if (obs && el) { obs.unobserve(el); obs.disconnect(); if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 6. observer disconnected (image)`); }
+                  return;
+                }
+                } catch {}
+              })();
+            }
             tryServerThumb().then((has) => {
+      if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 5. tryServerThumb result has=${has}`);
               if (!has) generateThumb();
             });
             if (obs && el) {
               obs.unobserve(el);
               obs.disconnect();
+      if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 6. observer disconnected`);
             }
           }
         }
@@ -391,35 +480,68 @@ export default function VideoGrid(): React.ReactElement {
       if (el && typeof IntersectionObserver !== "undefined") {
         obs = new IntersectionObserver(onIntersect, { rootMargin: "200px" });
         obs.observe(el);
+        if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 0. observer registered`);
       } else {
         tryServerThumb().then((has) => {
+          if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 4'. no observer tryServerThumb has=${has}`);
           if (!has) generateThumb();
         });
       }
 
       return () => {
         if (obs) obs.disconnect();
+        if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] cleanup`);
       };
-    }, [raw, src, isUrl]);
+  }, [raw, src, isUrl, index, isImage, isVideo, ext]);
 
     return (
       <div ref={containerRef} className="flex flex-col">
-        <div className="relative rounded-xl overflow-hidden w-full bg-black">
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover aspect-[9/16]"
-            style={{ maxHeight: "80vh" }}
-            controls
-            playsInline
-            preload="metadata"
-            poster={poster || ""}
-            src={src}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-          />
+        <div className={`relative rounded-xl overflow-hidden w-full ${isImage ? 'bg-transparent' : 'bg-black'}`}>
+          {isImage ? (
+            imgFailed ? (
+              // fallback raw <img>
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={src}
+                alt={title || 'image'}
+                className="w-full h-full object-cover aspect-[9/16]"
+                style={{ maxHeight: '80vh' }}
+                onClick={() => onImageClick(src)}
+              />
+            ) : (
+              <Image
+                src={src}
+                alt={title || 'image'}
+                width={360}
+                height={640}
+                className="w-full h-full object-cover aspect-[9/16]"
+                style={{ maxHeight: "80vh" }}
+                priority={false}
+                unoptimized
+                onClick={() => onImageClick(src)}
+                role="button"
+                aria-label="이미지 크게 보기"
+                onError={() => { if (THUMB_DEBUG) console.log('[IMG]', 'error', src); setImgFailed(true); }}
+                onLoadingComplete={() => { if (THUMB_DEBUG) console.log('[IMG]', 'loaded', src); }}
+              />
+            )
+          ) : (
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover aspect-[9/16]"
+              style={{ maxHeight: "80vh" }}
+              controls
+              playsInline
+              preload="metadata"
+              poster={poster || ""}
+              src={src}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+            />
+          )}
 
           {/* Centered Play icon overlay shown when there is no poster and video not playing */}
-          {!poster && !isPlaying && (
+          {!isImage && !poster && !isPlaying && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <Play className="w-12 h-12 text-white/90 drop-shadow" />
             </div>
@@ -470,13 +592,54 @@ export default function VideoGrid(): React.ReactElement {
         <div className="flex items-center gap-2" />
 
         <div className="grid auto-rows-fr gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-          {files!.map((f, i) => {
-            const key =
-              typeof f === "string" ? f : f.url ?? f.title ?? String(i);
-            return <VideoCard key={key} file={f} />;
-          })}
+          {(() => {
+            const used = new Set<string>();
+            const prepared = files!.map((f, i) => {
+              let base: string;
+              if (typeof f !== 'string' && typeof f.id === 'number') {
+                base = `id:${f.id}`;
+              } else {
+                base = typeof f === 'string' ? f : (f.url || f.title || String(i));
+              }
+              let finalKey = base;
+              if (used.has(finalKey)) {
+                let n = 1;
+                while (used.has(`${base}::${n}`)) n++;
+                finalKey = `${base}::${n}`;
+                if (THUMB_DEBUG) console.log('[KEY] duplicate resolved', base, '=>', finalKey);
+              }
+              used.add(finalKey);
+              return { f, i, key: finalKey };
+            });
+            return prepared.map(({ f, i, key }) => (
+              <VideoCard key={key} file={f} index={i} onImageClick={(u) => setPreviewImage(u)} />
+            ));
+          })()}
         </div>
       </div>
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPreviewImage(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="max-w-[90vw] max-h-[90vh]">
+            {/* Use native img for full-size to avoid layout constraints */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewImage}
+              alt="preview"
+              className="max-w-full max-h-[90vh] object-contain rounded shadow-lg"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setPreviewImage(null); }}
+            className="absolute top-4 right-4 text-white text-sm bg-black/50 rounded px-3 py-1 hover:bg-black/70"
+          >닫기</button>
+        </div>
+      )}
     </div>
   );
 }
