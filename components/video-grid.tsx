@@ -308,38 +308,40 @@ export default function VideoGrid(): React.ReactElement {
           vid.crossOrigin = "anonymous";
           vid.preload = "metadata";
           vid.muted = true; // mobile Safari allows loading/seek when muted
-          // @ts-expect-error playsInline for iOS Safari
           vid.playsInline = true;
           vid.src = src;
 
           // Wait for metadata / canplay with timeout to avoid hanging on some mobile browsers
-            await new Promise<void>((resolve, reject) => {
-              let settled = false;
-              const timer = setTimeout(() => {
-                if (!settled) {
-                  settled = true;
-                  resolve(); // proceed with whatever we have
-                }
-              }, 5000);
-              const done = () => {
-                if (settled) return;
+          await new Promise<void>((resolve, reject) => {
+            let settled = false;
+            const timer = setTimeout(() => {
+              if (!settled) {
                 settled = true;
-                clearTimeout(timer);
-                resolve();
-              };
-              const fail = () => {
-                if (settled) return;
-                settled = true;
-                clearTimeout(timer);
-                reject(new Error("video metadata load error"));
-              };
-              vid.addEventListener("loadedmetadata", done, { once: true });
-              vid.addEventListener("canplay", done, { once: true });
-              vid.addEventListener("error", fail, { once: true });
-            });
+                resolve(); // proceed with whatever we have
+              }
+            }, 5000);
+            const done = () => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              resolve();
+            };
+            const fail = () => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              reject(new Error("video metadata load error"));
+            };
+            vid.addEventListener("loadedmetadata", done, { once: true });
+            vid.addEventListener("canplay", done, { once: true });
+            vid.addEventListener("error", fail, { once: true });
+          });
 
           // Seek to 1s if possible; if duration shorter, use 0.1s
-          const seekTarget = Math.min(1, vid.duration > 0 ? vid.duration - 0.05 : 0.1);
+          const seekTarget = Math.min(
+            1,
+            vid.duration > 0 ? vid.duration - 0.05 : 0.1
+          );
           if (seekTarget > 0) {
             try {
               await new Promise<void>((resolve) => {
