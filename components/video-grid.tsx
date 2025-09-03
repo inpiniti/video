@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Image from "next/image";
 import { supabase, hasSupabase } from "@/lib/supabaseClient";
 import { EditVideoDialog } from "./edit-video-dialog";
 import { generateAndUploadThumbnail, saveThumbnailToSupabase } from "@/lib/thumbnailUploader";
 import { Button } from "@/components/ui/button";
 import { DropboxAuth } from "./dropbox-auth";
+import { Play } from "lucide-react";
 
 // Clean implementation: all thumbnail generation code removed.
 
@@ -235,6 +236,19 @@ export default function VideoGrid(): React.ReactElement {
     const id = typeof file !== "string" ? file.id : undefined;
     const thumbnail = typeof file !== "string" ? file.thumbnail : undefined;
     const [thumbLoading, setThumbLoading] = useState(false);
+    const [playing, setPlaying] = useState(false);
+    const videoRef = useRef<HTMLVideoElement | null>(null);
+
+    useEffect(() => {
+      if (playing && videoRef.current) {
+        // try autoplay
+        const v = videoRef.current;
+        const playAttempt = v.play();
+        if (playAttempt && typeof playAttempt.then === 'function') {
+          playAttempt.catch(() => {/* silent */});
+        }
+      }
+    }, [playing]);
 
     const handleGenerate = async () => {
       if (!id) return;
@@ -254,7 +268,39 @@ export default function VideoGrid(): React.ReactElement {
     return (
       <div className="flex flex-col">
         <div className="relative rounded-xl overflow-hidden w-full bg-black">
-          {thumbnail ? (
+          {thumbnail && !isImage && !playing ? (
+            <div className="relative w-full h-full aspect-[9/16]">
+              <Image
+                src={thumbnail}
+                alt={title || 'thumbnail'}
+                width={360}
+                height={640}
+                className="w-full h-full object-cover"
+                unoptimized
+              />
+              <button
+                type="button"
+                onClick={() => setPlaying(true)}
+                className="absolute inset-0 flex items-center justify-center group"
+                aria-label="Play video"
+              >
+                <span className="w-16 h-16 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center text-white group-hover:bg-black/70 transition">
+                  <Play className="w-8 h-8 ml-1" />
+                </span>
+              </button>
+            </div>
+          ) : thumbnail && !isImage && playing ? (
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover aspect-[9/16]"
+              style={{ maxHeight: "80vh" }}
+              controls
+              playsInline
+              preload="auto"
+              src={src}
+              autoPlay
+            />
+          ) : thumbnail && isImage ? (
             <Image
               src={thumbnail}
               alt={title || 'thumbnail'}
