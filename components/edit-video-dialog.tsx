@@ -17,6 +17,7 @@ export interface EditVideoData {
   date?: string | null;
   url: string;
   actor?: string | null;
+  thumbnail?: string | null;
 }
 
 export function EditVideoDialog({ video }: { video: EditVideoData }) {
@@ -25,7 +26,9 @@ export function EditVideoDialog({ video }: { video: EditVideoData }) {
   const [date, setDate] = useState(video.date ?? "");
   const [url, setUrl] = useState(video.url);
   const [actor, setActor] = useState(video.actor ?? "");
+  const [thumbnail, setThumbnail] = useState(video.thumbnail ?? "");
   const [loading, setLoading] = useState(false);
+  const [regenLoading, setRegenLoading] = useState(false);
 
   const submit = async () => {
     setLoading(true);
@@ -38,6 +41,7 @@ export function EditVideoDialog({ video }: { video: EditVideoData }) {
           date: date || null,
           url,
           actor: actor || null,
+          thumbnail: thumbnail ? thumbnail : null,
         })
         .eq("id", video.id);
       if (error) throw error;
@@ -47,6 +51,23 @@ export function EditVideoDialog({ video }: { video: EditVideoData }) {
       alert(String(e));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const regenerateThumbnail = async () => {
+    try {
+      setRegenLoading(true);
+      if (!hasSupabase() || !supabase) throw new Error('Supabase not configured');
+      // dynamic import to avoid circular
+      const { generateAndUploadThumbnail, saveThumbnailToSupabase } = await import('@/lib/thumbnailUploader');
+      const processingSrc = url.startsWith('http') ? `/api/video-proxy?u=${encodeURIComponent(url)}` : url;
+      const { publicUrl } = await generateAndUploadThumbnail(processingSrc);
+      await saveThumbnailToSupabase(video.id, publicUrl);
+      setThumbnail(publicUrl);
+    } catch (e) {
+      alert('Regen failed: ' + e);
+    } finally {
+      setRegenLoading(false);
     }
   };
 
@@ -70,6 +91,20 @@ export function EditVideoDialog({ video }: { video: EditVideoData }) {
           <Input value={url} onChange={(e) => setUrl(e.target.value)} />
           <label className="text-sm">Actor</label>
           <Input value={actor} onChange={(e) => setActor(e.target.value)} />
+          <div className="mt-2 flex flex-col gap-1">
+            <label className="text-sm flex items-center gap-2">Thumbnail URL
+              {regenLoading && <span className="text-[10px] text-gray-400">(generating...)</span>}
+            </label>
+            <Input value={thumbnail} onChange={(e) => setThumbnail(e.target.value)} placeholder="https://...jpg" />
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={regenerateThumbnail} disabled={regenLoading}>
+                {regenLoading ? 'Regen...' : 'Generate from video'}
+              </Button>
+              {thumbnail && (
+                <a href={thumbnail} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">open</a>
+              )}
+            </div>
+          </div>
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <DialogClose asChild>

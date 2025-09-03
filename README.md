@@ -38,48 +38,36 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 This project includes a JSON catalog generated from files in `public/aom_yumi` and exposed at `/aom_yumi.json`.
 
 - Place video files into `public/aom_yumi` and re-generate the catalog (or run the script used by the maintainer) to update the list.
-## Session changelog (actions performed in this workspace)
+## Session changelog (recent focus)
 
-Summary: I wired up a simple video catalog flow and a client-side video grid that displays vertical "shorts" style videos, parses filenames for title/date, and uses thumbnails when available (or generates them on the client when a card scrolls into view).
+The project originally experimented with multiple thumbnail strategies (server pre-generated frames, remote heuristic JPG probing, client-side canvas capture on visibility). All thumbnail generation and poster logic has now been fully removed per latest requirement. The grid simply renders:
 
-- `components/video-grid.tsx` — client component that:
-	- fetches `/aom_yumi.json` on the client,
-	- renders each video in a vertical (9:16) aspect ratio with controls,
-	- uses a server-side thumbnail at `/public/aom_yumi_thumbs/{filename}.jpg` when present (HEAD request), otherwise generates a data-URL thumbnail client-side when the card becomes visible (IntersectionObserver + hidden video + canvas).
+- Images (jpg/png/webp/etc.) directly with `next/image` (unoptimized) and opens them in a new tab on click.
+- Videos as plain `<video preload="none" controls>` elements (no poster attribute). The first frame only appears once playback begins (native browser behavior).
 
-Other changes
-- Ran `npx shadcn@latest init` after removing an existing `components.json` (the init created `components.json` and `lib/utils.ts` and updated CSS variables). This was part of setting up UI components in the project.
+Removed items:
+- `/api/thumbnail` usage (route may still exist but is unused).
+- IntersectionObserver + canvas capture logic.
+- Local / remote thumbnail probing and debug logging.
+- HEAD checks for `/aom_yumi_thumbs`. The `public/aom_yumi_thumbs` folder is no longer referenced.
 
-Notes and behavior
-- Poster/thumbnail behavior:
-	- First a HEAD request is attempted for `/aom_yumi_thumbs/{filename}.jpg` (server-generated thumbnail).
-	- If missing, the browser will load the video (only when the card is visible) and capture a frame into a canvas to use as a data-URL poster.
-	- Client-side thumbnail generation is intentionally deferred (IntersectionObserver) to avoid loading all videos at once.
+Current simplicity benefits:
+- Far less client JS and no race conditions around seeking/decoding.
+- No CORS issues from attempting to capture remote frames.
+- Predictable rendering (only native video & image elements).
 
-Lint note
-- There are minor lint warnings left intentionally (unused `catch` error variable in some catch blocks). They don't affect runtime; I can remove or log those errors if you prefer.
+If you later want posters again, prefer one deterministic server-side generation approach (e.g. a build script using ffmpeg) instead of reintroducing layered fallbacks.
 
-How to regenerate `public/aom_yumi.json` from the `public/aom_yumi` folder (PowerShell)
-Place this in the repo root (PowerShell):
-# create/update JSON array of filenames
+How to regenerate `public/aom_yumi.json` from the `public/aom_yumi` folder (PowerShell):
+
+```powershell
 Get-ChildItem -Path .\public\aom_yumi -File | Select-Object -ExpandProperty Name | ConvertTo-Json -Compress | Out-File -Encoding utf8 .\public\aom_yumi.json
 ```
 
-Optional: generate server thumbnails (requires ffmpeg installed)
-- Create a thumbnails folder first: `mkdir public\aom_yumi_thumbs`
-- Example PowerShell batch (will extract a frame at 1s for each mp4):
-
-```powershell
-Get-ChildItem .\public\aom_yumi -Filter *.mp4 | ForEach-Object {
-	ffmpeg -y -i $in -ss 00:00:01 -vframes 1 -q:v 2 $out
-}
-- Verified `public/aom_yumi.json` exists and `components/video-grid.tsx` reads it.
-- Implemented client-side thumbnail generation and server-thumb fallback. I validated the code compiles in the editor; please run the dev server and open `http://localhost:3000` to visually confirm thumbnails and vertical video layout.
-
-Next steps (optional)
-- Add a server API route to generate the JSON catalog on demand.
-- Add a build-step script that runs ffmpeg to create `public/aom_yumi_thumbs` for all videos.
-- Add a lightbox/fullscreen player for better viewing on click.
+Next optional enhancements:
+- Add pagination or virtual scrolling if the list grows large.
+- Add a lightweight lightbox for images (currently new-tab open is used for speed on mobile).
+- Add server task or script to (optionally) pre-generate posters if reintroduced.
 
 ## Supabase integration (optional)
 
@@ -152,53 +140,9 @@ This project includes a JSON catalog generated from files in `public/aom_yumi` a
 
 - Place video files into `public/aom_yumi` and re-generate the catalog (or run the script used by the maintainer) to update the list.
 
-## Session changelog (actions performed in this workspace)
+## Legacy thumbnail system (removed)
 
-Summary: implemented a client-side video catalog and grid that shows vertical videos, parses filenames for metadata, and displays thumbnails using local server thumbnails (if present) or client-side heuristics and on-demand capture.
-
-- `components/video-grid.tsx` — client component that:
-	- fetches `/aom_yumi.json` on the client (fallback from Supabase if configured),
-	- renders each video in a vertical (9:16) aspect ratio with controls,
-	- poster/thumbnail strategy: prefer a local thumbnail under `public/aom_yumi_thumbs/{filename}.jpg` (checked by HEAD), otherwise try heuristic jpg paths for remote URLs and finally generate a data-URL poster client-side when a card becomes visible (IntersectionObserver + hidden video + canvas).
-
-Other changes
-- Ran `npx shadcn@latest init` (created `components.json`, updated CSS variables and `lib/utils.ts`).
-
-Notes and behavior
-- Poster/thumbnail behavior (summary):
-	1. Try local server thumbnail: `/aom_yumi_thumbs/{filename}.jpg` via HEAD.
-	2. For remote URLs, try heuristic JPG paths (replace extension with `.jpg`, append `.jpg`), letting the browser attempt to load them.
-	3. If no poster is found, and the file is local, generate a frame on-demand when the card becomes visible using an offscreen video + canvas and use the resulting data-URL as the poster.
-	- Client-side generation is deferred via IntersectionObserver to avoid loading many videos at once.
-
-Lint note
-- There are minor lint warnings left intentionally (unused `catch` error variable in some catch blocks). They don't affect runtime; I can remove or log those errors if you prefer.
-
-How to regenerate `public/aom_yumi.json` from the `public/aom_yumi` folder (PowerShell)
-Place this in the repo root (PowerShell):
-
-```powershell
-# create/update JSON array of filenames
-Get-ChildItem -Path .\public\aom_yumi -File | Select-Object -ExpandProperty Name | ConvertTo-Json -Compress | Out-File -Encoding utf8 .\public\aom_yumi.json
-```
-
-Optional: generate server thumbnails (requires ffmpeg installed)
-- Create a thumbnails folder first: `mkdir public\aom_yumi_thumbs`
-- Example PowerShell batch (will extract a frame at 1s for each mp4):
-
-```powershell
-Get-ChildItem .\public\aom_yumi -Filter *.mp4 | ForEach-Object {
-		$in = $_.FullName
-		$out = Join-Path .\public\aom_yumi_thumbs ($_.BaseName + '.jpg')
-		ffmpeg -y -i $in -ss 00:00:01 -vframes 1 -q:v 2 $out
-}
-```
-
-- Verified `public/aom_yumi.json` exists and `components/video-grid.tsx` reads it. To visually confirm layout and posters run the dev server and open http://localhost:3000.
-
-Next steps (optional)
-- Add a build-step script that runs ffmpeg to create `public/aom_yumi_thumbs` for all videos.
-- Add a lightbox/fullscreen player for better viewing on click.
+The previous multi-stage thumbnail system (HEAD probe -> heuristic remote JPG -> client canvas capture) was removed for stability and simplicity. References in older commits or documentation sections can be ignored. Reintroduction should be done as a single server-side generation pass if needed.
 
 ## Supabase integration (optional)
 
@@ -235,21 +179,9 @@ create index on public.videos (id);
 - The Supabase client is in `lib/supabaseClient.ts` and reads `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 - Make sure to `npm install` after the added dependency `@supabase/supabase-js` if you enable Supabase features.
 
-## Mobile thumbnail notes
+## Mobile behavior
 
-On some mobile browsers (notably iOS Safari/Chrome) initial client-side thumbnail generation can fail because:
-
-- Autoplay policies block loading enough data to seek when the video isn't muted / playsInline.
-- `loadeddata` may never fire quickly for large remote files; relying only on that event stalls the canvas capture.
-- Seeking to 1s on very short clips rejects silently.
-
-Mitigations implemented in `components/video-grid.tsx`:
-
-1. Offscreen probe video is created with `muted` and `playsInline` flags to allow metadata to load without user gesture.
-2. We wait for either `loadedmetadata` or `canplay` (whichever comes first) with a 5s timeout fallback.
-3. Seek target adapts to duration (uses `min(1, duration - 0.05)` and falls back to ~0.1s if duration is not yet known).
-4. A secondary timeout after a seek attempt prevents hanging if `seeked` never fires.
-5. If width/height are zero we abort quietly instead of throwing.
+With thumbnails removed, mobile performance is simpler: videos are not preloaded (`preload="none"`), images open in a new tab (faster than an in-app lightbox for large files), and there is no background probing work.
 
 ## 코드 분석: `app/page.tsx` 및 `components/video-grid.tsx`
 
@@ -299,11 +231,32 @@ If thumbnails still fail on specific devices you can further improve by:
 
 Server pre-generation remains the most reliable for cross-browser consistency.
 
-## Mobile fixes applied in this session
+## Mobile layout adjustments
+## Dropbox 썸네일 업로드 OAuth 설정
 
-- Reduced eager thumbnail probing: IntersectionObserver rootMargin reduced to 100px to avoid starting work too early while scrolling on phones.
-- Faster previews: image clicks now open the full-size image in a new browser tab where possible (falls back to the in-app modal). This is noticeably faster on mobile browsers.
-- Mobile grid layout: default mobile column count changed so phones show 2 items per row for vertical videos.
-- Video preload reduced: video elements now use `preload="none"` to avoid unnecessary data usage before user interaction.
+수동 썸네일 생성 기능은 Dropbox에 JPG를 업로드하고 공유 링크를 받아 Supabase `videos.thumbnail` 컬럼에 저장합니다. 처음 사용 시 아래 과정을 따라 Dropbox OAuth 토큰을 발급하세요.
 
-After pulling these changes, please run the dev server and test on a phone to confirm the "refresh-like" scrolling behavior is gone and that image preview speed improved.
+1. Dropbox App 생성: https://www.dropbox.com/developers/apps 에서 새 앱을 만들고 권한에 files.content.write, sharing.write 포함.
+2. Redirect URI 추가: 앱 설정 화면에 현재 사이트 Origin (예: `http://localhost:3000`) 을 Redirect URI 로 등록.
+3. 환경 변수 설정: `.env.local` 에 아래 추가
+	```env
+	NEXT_PUBLIC_DROPBOX_APP_KEY=your_app_key_here
+	```
+4. 개발 서버 재시작 후 페이지 상단의 "Dropbox 연결" 버튼 클릭 → Dropbox 승인 → 리다이렉트 되면 주소창 해시(#...) 에서 토큰을 파싱하여 자동으로 localStorage `DROPBOX_ACCESS_TOKEN` 에 저장됩니다.
+5. 이후 Thumbnail / Regen 버튼을 눌러 프레임을 추출하면 Dropbox 업로드 → Supabase 업데이트가 진행됩니다.
+
+토큰 갱신/해제: 상단 컴포넌트에서 "해제" 클릭 시 localStorage 토큰이 제거됩니다. 만료나 권한 부족 에러가 나면 다시 연결을 시도하세요.
+
+보안 주의: Implicit Flow(해시 토큰)는 순수 클라이언트 편의를 위한 것으로, 프로덕션/공개 서비스에서는 서버측 Code + PKCE 흐름을 권장합니다. 필요하면 `/api` 라우트로 교환 로직을 추가하세요.
+
+허용 호스트 제한(프록시): 원격 교차 출처 영상을 프록시하는 `/api/video-proxy` 라우트는 기본 모든 호스트를 허용합니다. 운영 환경에서는 다음과 같이 제한 권장:
+```env
+ALLOWED_VIDEO_HOSTS=video.example.com,cdn.mysite.net
+```
+
+대용량 파일 주의: 현재 프록시는 Range 지원이 없어 큰 파일은 메모리를 많이 사용합니다. 개선하려면 스트리밍/Range 구현을 추가하십시오.
+
+
+- 2 columns on small screens for vertical media.
+- `preload="none"` on videos to save bandwidth.
+- Direct new-tab open for images for faster full-resolution viewing.
