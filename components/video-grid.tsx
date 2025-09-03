@@ -306,21 +306,19 @@ export default function VideoGrid(): React.ReactElement {
           return false;
         }
 
-        // For remote URLs: ask the server to generate/cache a thumbnail.
-        try {
-          if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.2 remote API fetch start`);
-          const api = `/api/thumbnail?url=${encodeURIComponent(raw)}`;
-          const res = await fetch(api);
-          if (!res.ok) return false;
-          const data = await res.json();
-          if (data && data.url) {
-            setPoster(data.url);
-            if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.2 remote API success => poster=${data.url}`);
+        // For remote URLs: do not call the server API (unreliable/blocked).
+        // Instead, use heuristic jpg paths and let the browser attempt to load them.
+        if (isUrl) {
+          try {
+            if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.2 remote heuristics start`);
+            const u = new URL(raw);
+            const pathPoster = `${u.origin}${u.pathname.replace(/\.[^.]+$/, ".jpg")}`;
+            setPoster(pathPoster);
+            if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.2 remote heuristic pathPoster=${pathPoster}`);
             return true;
+          } catch {
+            if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.2 remote heuristic failed`);
           }
-        } catch {
-          // ignore and fall through to heuristics below
-          if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 2.2 remote API failed`);
         }
 
         // Heuristic fallbacks (best-effort): set probable jpg paths and let browser try
@@ -478,7 +476,8 @@ export default function VideoGrid(): React.ReactElement {
       };
 
       if (el && typeof IntersectionObserver !== "undefined") {
-        obs = new IntersectionObserver(onIntersect, { rootMargin: "200px" });
+        // reduce eager prefetching on mobile by tightening the rootMargin
+        obs = new IntersectionObserver(onIntersect, { rootMargin: "100px" });
         obs.observe(el);
         if (THUMB_DEBUG) console.log(`[THUMB ${debugId}] 0. observer registered`);
       } else {
@@ -532,7 +531,7 @@ export default function VideoGrid(): React.ReactElement {
               style={{ maxHeight: "80vh" }}
               controls
               playsInline
-              preload="metadata"
+              preload="none"
               poster={poster || ""}
               src={src}
               onPlay={() => setIsPlaying(true)}
@@ -591,7 +590,8 @@ export default function VideoGrid(): React.ReactElement {
         </div>
         <div className="flex items-center gap-2" />
 
-        <div className="grid auto-rows-fr gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+  {/* Default to 2 columns on small/phone screens as requested */}
+  <div className="grid auto-rows-fr gap-4 grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {(() => {
             const used = new Set<string>();
             const prepared = files!.map((f, i) => {
@@ -611,8 +611,21 @@ export default function VideoGrid(): React.ReactElement {
               used.add(finalKey);
               return { f, i, key: finalKey };
             });
-            return prepared.map(({ f, i, key }) => (
-              <VideoCard key={key} file={f} index={i} onImageClick={(u) => setPreviewImage(u)} />
+              return prepared.map(({ f, i, key }) => (
+              <VideoCard
+                key={key}
+                file={f}
+                index={i}
+                onImageClick={(u) => {
+                  try {
+                    // open in new tab for faster full-size viewing on mobile
+                    window.open(u, "_blank", "noopener,noreferrer");
+                  } catch {
+                    // fallback to in-app preview
+                    setPreviewImage(u);
+                  }
+                }}
+              />
             ));
           })()}
         </div>
