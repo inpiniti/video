@@ -257,6 +257,20 @@ ALLOWED_VIDEO_HOSTS=video.example.com,cdn.mysite.net
 대용량 파일 주의: 현재 프록시는 Range 지원이 없어 큰 파일은 메모리를 많이 사용합니다. 개선하려면 스트리밍/Range 구현을 추가하십시오.
 
 
+## Cyberdrop/Gigachad CDN 재생 전 프리플라이트
+
+일부 Cyberdrop 기반 CDN(예: `k1-cd.cdn.gigachad-cdn.ru`) 동영상은 재생 전에 인증용 프리플라이트 요청을 먼저 보내야 원활히 재생됩니다. 이를 위해 다음이 추가되었습니다:
+
+- 서버 라우트: `GET /api/cyberdrop-auth?key={id}` → `https://api.cyberdrop.me/api/file/auth/{id}` 로 프록시 호출합니다. 적절한 Referer 헤더를 포함합니다.
+- 클라이언트 동작: 비디오 카드에서 썸네일 위 “재생” 버튼을 누르면, 원본 URL이 Gigachad/Cyberdrop 패턴과 매칭될 경우 프리플라이트를 먼저 호출하고 곧바로 재생을 시작합니다. 진행 중엔 작은 스피너가 표시됩니다.
+
+키 추출 규칙(간단): 경로가 `/api/file/d/{key}` 형태일 때 `d` 다음 세그먼트를 키로 사용합니다. 실패하더라도 재생은 계속 시도합니다.
+
+운영 팁:
+- 프리플라이트는 실패해도 UX를 막지 않도록 무시됩니다. 필요 시 상태 코드를 검사해 재시도/토스트 알림을 추가하세요.
+- 특정 도메인만 대상이 되도록 정규식 필터(`/gigachad-cdn\.ru$/i`, `cyberdrop.me` 등)를 사용합니다. 다른 미러 도메인이 있으면 패턴을 보강하세요.
+
+
 - 2 columns on small screens for vertical media.
 - `preload="none"` on videos to save bandwidth.
 - Direct new-tab open for images for faster full-resolution viewing.

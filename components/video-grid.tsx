@@ -235,20 +235,80 @@ export default function VideoGrid(): React.ReactElement {
     const actor = typeof file !== "string" ? file.actor : undefined;
     const id = typeof file !== "string" ? file.id : undefined;
     const thumbnail = typeof file !== "string" ? file.thumbnail : undefined;
-    const [thumbLoading, setThumbLoading] = useState(false);
-    const [playing, setPlaying] = useState(false);
-    const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [thumbLoading, setThumbLoading] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [authing, setAuthing] = useState(false);
+  const [authTried, setAuthTried] = useState(false);
+  const [overrideSrc, setOverrideSrc] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+    // Keep refs for values used inside effects to avoid re-running on each render
+    const rawRef = useRef(raw);
+    const authTriedRef = useRef(authTried);
+    useEffect(() => { rawRef.current = raw; }, [raw]);
+    useEffect(() => { authTriedRef.current = authTried; }, [authTried]);
 
     useEffect(() => {
       if (playing && videoRef.current) {
-        // try autoplay
+        // try autoplay; if it fails and source matches cyberdrop/gigachad, preflight and retry
         const v = videoRef.current;
-        const playAttempt = v.play();
-        if (playAttempt && typeof playAttempt.then === 'function') {
-          playAttempt.catch(() => {/* silent */});
-        }
+        const tryPlay = async () => {
+          try {
+            await v.play();
+          } catch {
+            if (authTriedRef.current) return;
+            // Attempt auth preflight and tokenized URL fetch
+            try {
+              setAuthTried(true);
+              const u = new URL(rawRef.current, window.location.href);
+              const host = u.hostname;
+              const should = /gigachad-cdn\.ru$/i.test(host) || /cyberdrop\.me$/i.test(host);
+              if (!should) return;
+              // Extract key: prefer "/d/{key}" pattern
+              let key: string | null = null;
+              const parts = u.pathname.split('/').filter(Boolean);
+              const idx = parts.findIndex(p => p === 'd');
+              if (idx >= 0 && parts[idx+1]) key = parts[idx+1];
+              if (!key) key = parts.pop() || null;
+              if (!key) return;
+              setAuthing(true);
+              const resp = await fetch(`/api/cyberdrop-auth?key=${encodeURIComponent(key)}`, { cache: 'no-store' });
+              if (resp.ok) {
+                let tokenUrl: string | null = null;
+                try {
+                  const j = await resp.json();
+                  if (j && typeof j.url === 'string') tokenUrl = j.url;
+                } catch {
+                  // fallback: read text and try naive url extraction
+                  try {
+                    const t = await resp.clone().text();
+                    const m = t.match(/"url"\s*:\s*"([^"]+)"/);
+                    if (m) tokenUrl = m[1];
+                  } catch {/* ignore */}
+                }
+                if (tokenUrl) {
+                  setOverrideSrc(tokenUrl);
+                }
+              }
+            } finally {
+              setAuthing(false);
+            }
+          }
+        };
+        void tryPlay();
       }
     }, [playing]);
+
+    // When overrideSrc is set while already in playing mode, reload and try playback again
+    useEffect(() => {
+      if (!playing || !overrideSrc || !videoRef.current) return;
+      const v = videoRef.current;
+      // React will update src prop from state; give it a tick then play
+      const id = setTimeout(() => {
+        void v.play().catch(() => {/* ignore */});
+      }, 50);
+      return () => clearTimeout(id);
+    }, [overrideSrc, playing]);
 
     const handleGenerate = async () => {
       if (!id) return;
@@ -280,7 +340,11 @@ export default function VideoGrid(): React.ReactElement {
               />
               <button
                 type="button"
-                onClick={() => setPlaying(true)}
+                onClick={() => {
+                  setAuthTried(false);
+                  setOverrideSrc(null);
+                  setPlaying(true);
+                }}
                 className="absolute inset-0 flex items-center justify-center group"
                 aria-label="Play video"
               >
@@ -290,6 +354,7 @@ export default function VideoGrid(): React.ReactElement {
               </button>
             </div>
           ) : thumbnail && !isImage && playing ? (
+            <div className="relative">
             <video
               ref={videoRef}
               className="w-full h-full object-cover aspect-[9/16]"
@@ -297,9 +362,25 @@ export default function VideoGrid(): React.ReactElement {
               controls
               playsInline
               preload="auto"
-              src={src}
+              src={overrideSrc || src}
+              onError={() => {
+                if (authTried) return;
+                // Trigger auth flow via effect by toggling playing to re-run
+                setAuthTried(true);
+                // Kick the effect to run; it will detect failure and fetch token URL
+                // Do a no-op play attempt to route into catch path
+                if (videoRef.current) {
+                  void videoRef.current.play().catch(() => {/* handled in effect */});
+                }
+              }}
               autoPlay
             />
+            {authing && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <span className="px-2 py-1 text-xs rounded bg-black/60 text-white">authenticating…</span>
+              </div>
+            )}
+            </div>
           ) : thumbnail && isImage ? (
             <Image
               src={thumbnail}
@@ -359,6 +440,7 @@ export default function VideoGrid(): React.ReactElement {
                       date: typeof file !== "string" ? file.date ?? null : null,
                       url: src,
                       actor: actor || null,
+                      thumbnail: typeof file !== 'string' ? file.thumbnail ?? null : null,
                     }}
                   />
                   <Button
