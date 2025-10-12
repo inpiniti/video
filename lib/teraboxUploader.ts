@@ -62,32 +62,45 @@ export async function uploadToTeraBox(
 
       if (fileId) {
         console.log("[TeraBox] Getting download link for fileId:", fileId);
-        const downloadInfo = await uploader.downloadFile(fileId);
 
-        console.log(
-          "[TeraBox] downloadFile response:",
-          JSON.stringify(downloadInfo, null, 2)
-        );
+        try {
+          // Use internal helper directly
+          const { default: getDownloadLink } = await import(
+            "terabox-upload-tool/lib/helpers/download/download"
+          );
+          const downloadResult = await getDownloadLink(
+            credentials.ndus,
+            fileId.toString()
+          );
 
-        if (downloadInfo && downloadInfo.dlink) {
           console.log(
-            "[TeraBox] ✅ Direct streaming link obtained:",
-            downloadInfo.dlink
+            "[TeraBox] getDownloadLink response:",
+            JSON.stringify(downloadResult, null, 2)
           );
-          return downloadInfo.dlink;
-        } else {
-          console.error(
-            "[TeraBox] ⚠️ No dlink in response. Full response:",
-            downloadInfo
-          );
+
+          if (downloadResult.success && downloadResult.downloadLink) {
+            console.log(
+              "[TeraBox] ✅ Direct streaming link obtained:",
+              downloadResult.downloadLink
+            );
+            return downloadResult.downloadLink;
+          } else {
+            console.error(
+              "[TeraBox] ⚠️ Failed to get download link:",
+              downloadResult.message
+            );
+            throw new Error(
+              `Failed to get download link: ${downloadResult.message}`
+            );
+          }
+        } catch (dlError) {
+          console.error("[TeraBox] ❌ getDownloadLink() failed:", dlError);
+          throw new Error(`Failed to get download link: ${dlError}`);
         }
       } else {
         console.error("[TeraBox] ⚠️ No fileId in upload result");
+        throw new Error("Upload succeeded but no fileId returned");
       }
-
-      // Fallback: return a share link format (may need adjustment)
-      const fileName = basename(filePath);
-      return `https://www.terabox.com/sharing/link?surl=${fileName}`;
     } else {
       console.error("[TeraBox] Upload failed:", result.message);
       throw new Error(result.message || "Upload failed");

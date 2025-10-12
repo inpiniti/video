@@ -20,6 +20,8 @@ export interface Job {
   id: string;
   videoId: number;
   sourceUrl: string;
+  supabaseUrl: string;
+  supabaseKey: string;
   status: JobStatus;
   progress?: JobProgress; // Real-time progress info
   teraboxUrl?: string;
@@ -32,12 +34,19 @@ const queue: string[] = [];
 let activeWorkers = 0;
 const MAX_CONCURRENT = 10;
 
-export function enqueueJob(videoId: number, sourceUrl: string): string {
+export function enqueueJob(
+  videoId: number,
+  sourceUrl: string,
+  supabaseUrl: string,
+  supabaseKey: string
+): string {
   const id = `job_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   const job: Job = {
     id,
     videoId,
     sourceUrl,
+    supabaseUrl,
+    supabaseKey,
     status: "queued",
     createdAt: Date.now(),
   };
@@ -52,10 +61,6 @@ export function enqueueJob(videoId: number, sourceUrl: string): string {
 
   processQueue();
   return id;
-}
-
-export function getJob(id: string): Job | undefined {
-  return jobs.get(id);
 }
 
 export function getAllJobs(): Job[] {
@@ -190,7 +195,41 @@ async function processJob(job: Job) {
     const teraboxUrl = await uploadToTeraBox(compressedPath, job.videoId);
     console.log(`[Job ${job.id}] ✅ Uploaded! URL: ${teraboxUrl}`);
 
-    // 4. Done
+    // 4. Update Supabase with new URL and remove [upload] tag
+    console.log(`[Job ${job.id}] 💾 Step 4/4: Updating Supabase...`);
+    job.status = "uploading"; // Keep as uploading for UI consistency
+    job.progress = { percentage: 95, message: "Updating database..." };
+
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(job.supabaseUrl, job.supabaseKey);
+
+    // Get current title
+    const { data: video } = await supabase
+      .from("videos")
+      .select("title")
+      .eq("id", job.videoId)
+      .single();
+
+    let newTitle = video?.title || "";
+    // Remove [upload] tag if present
+    newTitle = newTitle.replace(/\[upload\]\s*/gi, "").trim();
+
+    // Update URL and title
+    const { error } = await supabase
+      .from("videos")
+      .update({
+        url: teraboxUrl,
+        title: newTitle,
+      })
+      .eq("id", job.videoId);
+
+    if (error) {
+      console.error(`[Job ${job.id}] ❌ Supabase update failed:`, error);
+      throw new Error(`Supabase update failed: ${error.message}`);
+    }
+    console.log(`[Job ${job.id}] ✅ Supabase updated, [upload] tag removed`);
+
+    // 5. Done
     job.status = "done";
     job.teraboxUrl = teraboxUrl;
     job.progress = { percentage: 100, message: "Complete!" };

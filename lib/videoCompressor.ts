@@ -1,5 +1,5 @@
-// Compress video to WebM (AV1 video + Opus audio) via ffmpeg
-// Maintains high quality with efficient encoding
+// Compress video to MP4 (H.265/HEVC video + AAC audio) via ffmpeg
+// iPhone/Safari compatible format with excellent quality/size ratio
 import { spawn } from "child_process";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -9,39 +9,38 @@ export async function compressVideo(
   jobId: string,
   onProgress?: (percent: number, message: string) => void
 ): Promise<string> {
-  const outputPath = join(tmpdir(), `${jobId}_compressed.webm`);
+  const outputPath = join(tmpdir(), `${jobId}_compressed.mp4`);
 
   console.log(`[Compressor] 🎬 Starting compression...`);
   console.log(`[Compressor] Input: ${inputPath}`);
   console.log(`[Compressor] Output: ${outputPath}`);
-  console.log(`[Compressor] Codec: AV1 + Opus (WebM)`);
+  console.log(`[Compressor] Codec: H.265 (HEVC) + AAC (MP4)`);
 
-  // AV1 + Opus in WebM container
-  // -c:v libaom-av1: AV1 video codec (best compression efficiency)
-  // -crf 30: Constant quality (lower = higher quality; 30 is good balance)
-  // -b:v 0: Let CRF control bitrate
-  // -cpu-used 4: Speed/quality tradeoff (0=slowest/best, 8=fastest/worst; 4 is balanced)
-  // -c:a libopus: Opus audio codec
+  // H.265/HEVC + AAC in MP4 container (iPhone/Safari compatible)
+  // -c:v libx265: H.265/HEVC video codec (excellent compression, widely supported)
+  // -crf 28: Constant quality (lower = higher quality; 28 is good balance for mobile)
+  // -preset medium: Encoding speed/quality tradeoff
+  // -tag:v hvc1: Use hvc1 tag for better iOS/Safari compatibility
+  // -c:a aac: AAC audio codec (universal compatibility)
   // -b:a 128k: Audio bitrate
+  // -movflags +faststart: Enable progressive streaming (fast start playback)
   const args = [
     "-i",
     inputPath,
     "-c:v",
-    "libaom-av1",
+    "libx265",
     "-crf",
-    "30",
-    "-b:v",
-    "0",
-    "-cpu-used",
-    "4",
-    "-row-mt",
-    "1",
-    "-threads",
-    "0",
+    "28",
+    "-preset",
+    "medium",
+    "-tag:v",
+    "hvc1",
     "-c:a",
-    "libopus",
+    "aac",
     "-b:a",
     "128k",
+    "-movflags",
+    "+faststart",
     "-y",
     outputPath,
   ];

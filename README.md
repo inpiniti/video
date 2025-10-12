@@ -307,17 +307,19 @@ Videos can be downloaded, compressed, and re-uploaded to cloud storage (TeraBox 
 
 - **Upload button** next to Edit/Regen in each video card
 - **Queue system** with 10 concurrent workers
-- **Compression**: WebM format with AV1 video codec + Opus audio (excellent quality/size ratio)
+- **Compression**: MP4 format with H.265 (HEVC) video codec + AAC audio (iPhone/Safari compatible, excellent quality/size ratio)
 - **Auto-update**: Supabase URL updated with new cloud URL after upload completes
-- **Progress UI**: Button shows "Uploading..." during processing
+- **Progress UI**: Button shows real-time progress during processing
+- **Background processing**: [upload] tag in title indicates processing in background
 
 ### Pipeline stages
 
-1. **Queued**: Job added to processing queue
+1. **Queued**: Job added to processing queue (title shows [upload] tag)
 2. **Downloading**: Fetch original video from source URL
-3. **Compressing**: Convert to WebM (AV1+Opus) via ffmpeg
-4. **Uploading**: Upload to TeraBox (or alternative storage)
-5. **Done**: Update Supabase with new URL
+3. **Compressing**: Convert to MP4 (H.265/HEVC + AAC) via ffmpeg
+4. **Uploading**: Upload to TeraBox cloud storage
+5. **Done**: Update Supabase with new URL and remove [upload] tag
+6. **Streaming**: Videos are proxied through `/api/terabox-stream` for seamless playback with seek support
 
 ### TeraBox Integration
 
@@ -354,18 +356,19 @@ If credentials are not set, the uploader will fall back to mock mode.
 
 ### Requirements
 
-- **ffmpeg** must be installed on server with AV1 support:
+- **ffmpeg** must be installed on server with H.265/HEVC support:
   ```bash
-  # Check if AV1 codec is available
-  ffmpeg -codecs | grep av1
+  # Check if H.265 codec is available
+  ffmpeg -codecs | grep hevc
   ```
 - **TeraBox credentials** (see `TERABOX_SETUP.md` for setup guide)
 
 ### Usage
 
 1. Click "Upload" button on any video card
-2. Wait for processing (button shows "Uploading...")
-3. Video URL automatically updates to compressed cloud version
-4. Original quality preserved with much smaller file size
+2. Title shows [upload] tag - processing in background
+3. Server handles: download → compress → upload → update database
+4. When complete: [upload] tag removed, video URL updated to compressed cloud version
+5. Video plays on all devices including iPhone/Safari with much smaller file size
 
 For detailed documentation, see `UPLOAD_PIPELINE.md`.
