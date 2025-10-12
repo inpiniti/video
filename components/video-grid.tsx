@@ -4,7 +4,10 @@ import React, { useEffect, useState, useRef } from "react";
 import Image from "next/image";
 import { supabase, hasSupabase } from "@/lib/supabaseClient";
 import { EditVideoDialog } from "./edit-video-dialog";
-import { generateAndUploadThumbnail, saveThumbnailToSupabase } from "@/lib/thumbnailUploader";
+import {
+  generateAndUploadThumbnail,
+  saveThumbnailToSupabase,
+} from "@/lib/thumbnailUploader";
 import { Button } from "@/components/ui/button";
 import { DropboxAuth } from "./dropbox-auth";
 import { Play } from "lucide-react";
@@ -13,7 +16,14 @@ import { Play } from "lucide-react";
 
 type FileEntry =
   | string
-  | { id?: number; title?: string; date?: string; url: string; actor?: string; thumbnail?: string | null };
+  | {
+      id?: number;
+      title?: string;
+      date?: string;
+      url: string;
+      actor?: string;
+      thumbnail?: string | null;
+    };
 
 export default function VideoGrid(): React.ReactElement {
   const [files, setFiles] = useState<FileEntry[] | null>(null);
@@ -36,7 +46,7 @@ export default function VideoGrid(): React.ReactElement {
       if (!hasSupabase() || !supabase) return;
       const { data, error } = await supabase
         .from("videos")
-  .select("id,title,date,url,actor,thumbnail")
+        .select("id,title,date,url,actor,thumbnail")
         .order("id", { ascending: true })
         .limit(1000);
       if (!error && Array.isArray(data)) {
@@ -56,7 +66,10 @@ export default function VideoGrid(): React.ReactElement {
               date: typeof r.date === "string" ? r.date : undefined,
               url,
               actor: typeof r.actor === "string" ? r.actor : undefined,
-              thumbnail: typeof (r as { thumbnail?: unknown }).thumbnail === "string" ? (r as { thumbnail?: string }).thumbnail : undefined,
+              thumbnail:
+                typeof (r as { thumbnail?: unknown }).thumbnail === "string"
+                  ? (r as { thumbnail?: string }).thumbnail
+                  : undefined,
             };
           })
           .filter(Boolean) as FileEntry[];
@@ -100,7 +113,10 @@ export default function VideoGrid(): React.ReactElement {
                   date: typeof r.date === "string" ? r.date : undefined,
                   url,
                   actor: typeof r.actor === "string" ? r.actor : undefined,
-                  thumbnail: typeof (r as { thumbnail?: unknown }).thumbnail === "string" ? (r as { thumbnail?: string }).thumbnail : undefined,
+                  thumbnail:
+                    typeof (r as { thumbnail?: unknown }).thumbnail === "string"
+                      ? (r as { thumbnail?: string }).thumbnail
+                      : undefined,
                 };
               })
               .filter(Boolean) as FileEntry[];
@@ -235,18 +251,21 @@ export default function VideoGrid(): React.ReactElement {
     const actor = typeof file !== "string" ? file.actor : undefined;
     const id = typeof file !== "string" ? file.id : undefined;
     const thumbnail = typeof file !== "string" ? file.thumbnail : undefined;
-  const [thumbLoading, setThumbLoading] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [authing, setAuthing] = useState(false);
-  const [authTried, setAuthTried] = useState(false);
-  const [overrideSrc, setOverrideSrc] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-    // Keep refs for values used inside effects to avoid re-running on each render
+    const [thumbLoading, setThumbLoading] = useState(false);
+    const [uploadLoading, setUploadLoading] = useState(false);
+    const [playing, setPlaying] = useState(false);
+    const [authing, setAuthing] = useState(false);
+    const [authTried, setAuthTried] = useState(false);
+    const [overrideSrc, setOverrideSrc] = useState<string | null>(null);
+    const videoRef = useRef<HTMLVideoElement | null>(null); // Keep refs for values used inside effects to avoid re-running on each render
     const rawRef = useRef(raw);
     const authTriedRef = useRef(authTried);
-    useEffect(() => { rawRef.current = raw; }, [raw]);
-    useEffect(() => { authTriedRef.current = authTried; }, [authTried]);
+    useEffect(() => {
+      rawRef.current = raw;
+    }, [raw]);
+    useEffect(() => {
+      authTriedRef.current = authTried;
+    }, [authTried]);
 
     useEffect(() => {
       if (playing && videoRef.current) {
@@ -262,29 +281,35 @@ export default function VideoGrid(): React.ReactElement {
               setAuthTried(true);
               const u = new URL(rawRef.current, window.location.href);
               const host = u.hostname;
-              const should = /gigachad-cdn\.ru$/i.test(host) || /cyberdrop\.me$/i.test(host);
+              const should =
+                /gigachad-cdn\.ru$/i.test(host) || /cyberdrop\.me$/i.test(host);
               if (!should) return;
               // Extract key: prefer "/d/{key}" pattern
               let key: string | null = null;
-              const parts = u.pathname.split('/').filter(Boolean);
-              const idx = parts.findIndex(p => p === 'd');
-              if (idx >= 0 && parts[idx+1]) key = parts[idx+1];
+              const parts = u.pathname.split("/").filter(Boolean);
+              const idx = parts.findIndex((p) => p === "d");
+              if (idx >= 0 && parts[idx + 1]) key = parts[idx + 1];
               if (!key) key = parts.pop() || null;
               if (!key) return;
               setAuthing(true);
-              const resp = await fetch(`/api/cyberdrop-auth?key=${encodeURIComponent(key)}`, { cache: 'no-store' });
+              const resp = await fetch(
+                `/api/cyberdrop-auth?key=${encodeURIComponent(key)}`,
+                { cache: "no-store" }
+              );
               if (resp.ok) {
                 let tokenUrl: string | null = null;
                 try {
                   const j = await resp.json();
-                  if (j && typeof j.url === 'string') tokenUrl = j.url;
+                  if (j && typeof j.url === "string") tokenUrl = j.url;
                 } catch {
                   // fallback: read text and try naive url extraction
                   try {
                     const t = await resp.clone().text();
                     const m = t.match(/"url"\s*:\s*"([^"]+)"/);
                     if (m) tokenUrl = m[1];
-                  } catch {/* ignore */}
+                  } catch {
+                    /* ignore */
+                  }
                 }
                 if (tokenUrl) {
                   setOverrideSrc(tokenUrl);
@@ -305,7 +330,9 @@ export default function VideoGrid(): React.ReactElement {
       const v = videoRef.current;
       // React will update src prop from state; give it a tick then play
       const id = setTimeout(() => {
-        void v.play().catch(() => {/* ignore */});
+        void v.play().catch(() => {
+          /* ignore */
+        });
       }, 50);
       return () => clearTimeout(id);
     }, [overrideSrc, playing]);
@@ -314,17 +341,104 @@ export default function VideoGrid(): React.ReactElement {
       if (!id) return;
       try {
         setThumbLoading(true);
-        const processingSrc = isCrossOrigin ? `/api/video-proxy?u=${encodeURIComponent(raw)}` : src;
+        const processingSrc = isCrossOrigin
+          ? `/api/video-proxy?u=${encodeURIComponent(raw)}`
+          : src;
         const { publicUrl } = await generateAndUploadThumbnail(processingSrc);
         await saveThumbnailToSupabase(id, publicUrl);
         // optimistic update
-        setFiles((prev) => prev?.map(f => (typeof f !== 'string' && f.id === id ? { ...f, thumbnail: publicUrl } : f)) || prev);
+        setFiles(
+          (prev) =>
+            prev?.map((f) =>
+              typeof f !== "string" && f.id === id
+                ? { ...f, thumbnail: publicUrl }
+                : f
+            ) || prev
+        );
       } catch (e) {
-        alert('Thumbnail failed: ' + e);
+        alert("Thumbnail failed: " + e);
       } finally {
         setThumbLoading(false);
       }
     };
+
+    const [uploadProgress, setUploadProgress] = useState<string>("");
+
+    const handleUpload = async () => {
+      if (!id) return;
+      setUploadLoading(true);
+      setUploadProgress("Enqueueing...");
+
+      try {
+        // 1. Enqueue job
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, url: raw }),
+        });
+        if (!res.ok) throw new Error("Upload API failed");
+        const { jobId } = await res.json();
+
+        setUploadProgress("Job queued...");
+
+        // 2. Poll job status
+        let done = false;
+        while (!done) {
+          await new Promise((r) => setTimeout(r, 2000)); // poll every 2s for faster updates
+          const statusRes = await fetch(
+            `/api/upload?jobId=${encodeURIComponent(jobId)}`
+          );
+          if (!statusRes.ok) throw new Error("Status check failed");
+          const job = await statusRes.json();
+
+          // Update progress display
+          if (job.progress?.message) {
+            setUploadProgress(job.progress.message);
+          } else {
+            // Fallback to status-based messages
+            switch (job.status) {
+              case "queued":
+                setUploadProgress("Waiting in queue...");
+                break;
+              case "downloading":
+                setUploadProgress("Downloading video...");
+                break;
+              case "compressing":
+                setUploadProgress("Compressing video...");
+                break;
+              case "uploading":
+                setUploadProgress("Uploading to cloud...");
+                break;
+            }
+          }
+
+          if (job.status === "done") {
+            // 3. Update Supabase with TeraBox URL
+            if (!hasSupabase() || !supabase)
+              throw new Error("Supabase not configured");
+            setUploadProgress("Updating database...");
+            const { error } = await supabase
+              .from("videos")
+              .update({ url: job.teraboxUrl })
+              .eq("id", id);
+            if (error) throw error;
+            window.dispatchEvent(new CustomEvent("video-updated"));
+            done = true;
+          } else if (job.status === "error") {
+            throw new Error(job.error || "Job failed");
+          }
+          // else queued/downloading/compressing/uploading: keep polling
+        }
+        setUploadProgress("Complete!");
+        alert("Upload complete! Video URL updated.");
+      } catch (e) {
+        alert(`Upload failed: ${e}`);
+      } finally {
+        setUploadLoading(false);
+        setUploadProgress("");
+      }
+    };
+
     return (
       <div className="flex flex-col">
         <div className="relative rounded-xl overflow-hidden w-full bg-black">
@@ -332,7 +446,7 @@ export default function VideoGrid(): React.ReactElement {
             <div className="relative w-full h-full aspect-[9/16]">
               <Image
                 src={thumbnail}
-                alt={title || 'thumbnail'}
+                alt={title || "thumbnail"}
                 width={360}
                 height={640}
                 className="w-full h-full object-cover"
@@ -355,41 +469,51 @@ export default function VideoGrid(): React.ReactElement {
             </div>
           ) : thumbnail && !isImage && playing ? (
             <div className="relative">
-            <video
-              ref={videoRef}
-              className="w-full h-full object-cover aspect-[9/16]"
-              style={{ maxHeight: "80vh" }}
-              controls
-              playsInline
-              preload="auto"
-              src={overrideSrc || src}
-              onError={() => {
-                if (authTried) return;
-                // Trigger auth flow via effect by toggling playing to re-run
-                setAuthTried(true);
-                // Kick the effect to run; it will detect failure and fetch token URL
-                // Do a no-op play attempt to route into catch path
-                if (videoRef.current) {
-                  void videoRef.current.play().catch(() => {/* handled in effect */});
-                }
-              }}
-              autoPlay
-            />
-            {authing && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <span className="px-2 py-1 text-xs rounded bg-black/60 text-white">authenticating…</span>
-              </div>
-            )}
+              <video
+                ref={videoRef}
+                className="w-full h-full object-cover aspect-[9/16]"
+                style={{ maxHeight: "80vh" }}
+                controls
+                playsInline
+                preload="auto"
+                src={overrideSrc || src}
+                onError={() => {
+                  if (authTried) return;
+                  // Trigger auth flow via effect by toggling playing to re-run
+                  setAuthTried(true);
+                  // Kick the effect to run; it will detect failure and fetch token URL
+                  // Do a no-op play attempt to route into catch path
+                  if (videoRef.current) {
+                    void videoRef.current.play().catch(() => {
+                      /* handled in effect */
+                    });
+                  }
+                }}
+                autoPlay
+              />
+              {authing && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <span className="px-2 py-1 text-xs rounded bg-black/60 text-white">
+                    authenticating…
+                  </span>
+                </div>
+              )}
             </div>
           ) : thumbnail && isImage ? (
             <Image
               src={thumbnail}
-              alt={title || 'thumbnail'}
+              alt={title || "thumbnail"}
               width={360}
               height={640}
               className="w-full h-full object-cover aspect-[9/16]"
               unoptimized
-              onClick={() => { try { window.open(src,'_blank','noopener,noreferrer'); } catch {/* ignore */} }}
+              onClick={() => {
+                try {
+                  window.open(src, "_blank", "noopener,noreferrer");
+                } catch {
+                  /* ignore */
+                }
+              }}
             />
           ) : isImage ? (
             <Image
@@ -399,7 +523,13 @@ export default function VideoGrid(): React.ReactElement {
               height={640}
               className="w-full h-full object-cover aspect-[9/16]"
               unoptimized
-              onClick={() => { try { window.open(src, "_blank", "noopener,noreferrer"); } catch {/* ignore */} }}
+              onClick={() => {
+                try {
+                  window.open(src, "_blank", "noopener,noreferrer");
+                } catch {
+                  /* ignore */
+                }
+              }}
             />
           ) : (
             <video
@@ -440,7 +570,10 @@ export default function VideoGrid(): React.ReactElement {
                       date: typeof file !== "string" ? file.date ?? null : null,
                       url: src,
                       actor: actor || null,
-                      thumbnail: typeof file !== 'string' ? file.thumbnail ?? null : null,
+                      thumbnail:
+                        typeof file !== "string"
+                          ? file.thumbnail ?? null
+                          : null,
                     }}
                   />
                   <Button
@@ -448,9 +581,28 @@ export default function VideoGrid(): React.ReactElement {
                     size="sm"
                     disabled={thumbLoading}
                     onClick={handleGenerate}
-                    title={isCrossOrigin ? 'Using proxy fetch for cross-origin video' : undefined}
+                    title={
+                      isCrossOrigin
+                        ? "Using proxy fetch for cross-origin video"
+                        : undefined
+                    }
                   >
-                    {thumbLoading ? '...' : (thumbnail ? 'Regen' : 'Thumbnail')}
+                    {thumbLoading ? "..." : thumbnail ? "Regen" : "Thumbnail"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={uploadLoading || !isUrl}
+                    onClick={handleUpload}
+                    title={
+                      uploadProgress ||
+                      "Download, compress (WebM AV1+Opus), upload to TeraBox"
+                    }
+                    className="min-w-[100px]"
+                  >
+                    {uploadLoading
+                      ? uploadProgress || "Uploading..."
+                      : "Upload"}
                   </Button>
                 </>
               )}
@@ -463,7 +615,7 @@ export default function VideoGrid(): React.ReactElement {
 
   return (
     <div className="space-y-4">
-  <DropboxAuth />
+      <DropboxAuth />
       {usingSupabase === false && (
         <div className="text-sm text-yellow-700">
           Supabase configured but unreachable — using local JSON fallback.
