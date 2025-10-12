@@ -365,75 +365,70 @@ export default function VideoGrid(): React.ReactElement {
     const [uploadProgress, setUploadProgress] = useState<string>("");
 
     const handleUpload = async () => {
-      if (!id) return;
-      setUploadLoading(true);
-      setUploadProgress("Enqueueing...");
+      if (!id || !hasSupabase() || !supabase) return;
 
       try {
-        // 1. Enqueue job
+        setUploadLoading(true);
+        setUploadProgress("Enqueueing...");
+
+        // Get Supabase credentials from environment
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+        if (!supabaseUrl || !supabaseKey) {
+          throw new Error("Supabase credentials not found");
+        }
+
+        // Add [upload] tag to title
+        const currentTitle = title || "";
+        const uploadingTitle = `[upload] ${currentTitle}`.trim();
+
+        const { error: updateError } = await supabase
+          .from("videos")
+          .update({ title: uploadingTitle })
+          .eq("id", id);
+
+        if (updateError) {
+          console.error("Failed to add [upload] tag:", updateError);
+          throw new Error("Failed to prepare upload");
+        }
+
+        // Update local state
+        setFiles(
+          (prev) =>
+            prev?.map((f) =>
+              typeof f !== "string" && f.id === id
+                ? { ...f, title: uploadingTitle }
+                : f
+            ) || prev
+        );
+
+        setUploadProgress("Starting server job...");
+
+        // Send to server with Supabase credentials
         const res = await fetch("/api/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, url: raw }),
+          body: JSON.stringify({
+            id,
+            url: raw,
+            supabaseUrl,
+            supabaseKey,
+          }),
         });
+
         if (!res.ok) throw new Error("Upload API failed");
-        const { jobId } = await res.json();
 
-        setUploadProgress("Job queued...");
+        // Done! Server handles everything
+        setUploadProgress("✅ Upload started! Processing in background...");
 
-        // 2. Poll job status
-        let done = false;
-        while (!done) {
-          await new Promise((r) => setTimeout(r, 2000)); // poll every 2s for faster updates
-          const statusRes = await fetch(
-            `/api/upload?jobId=${encodeURIComponent(jobId)}`
-          );
-          if (!statusRes.ok) throw new Error("Status check failed");
-          const job = await statusRes.json();
-
-          // Update progress display
-          if (job.progress?.message) {
-            setUploadProgress(job.progress.message);
-          } else {
-            // Fallback to status-based messages
-            switch (job.status) {
-              case "queued":
-                setUploadProgress("Waiting in queue...");
-                break;
-              case "downloading":
-                setUploadProgress("Downloading video...");
-                break;
-              case "compressing":
-                setUploadProgress("Compressing video...");
-                break;
-              case "uploading":
-                setUploadProgress("Uploading to cloud...");
-                break;
-            }
-          }
-
-          if (job.status === "done") {
-            // 3. Update Supabase with TeraBox URL
-            if (!hasSupabase() || !supabase)
-              throw new Error("Supabase not configured");
-            setUploadProgress("Updating database...");
-            const { error } = await supabase
-              .from("videos")
-              .update({ url: job.teraboxUrl })
-              .eq("id", id);
-            if (error) throw error;
-            window.dispatchEvent(new CustomEvent("video-updated"));
-            done = true;
-          } else if (job.status === "error") {
-            throw new Error(job.error || "Job failed");
-          }
-          // else queued/downloading/compressing/uploading: keep polling
-        }
-        setUploadProgress("Complete!");
-        alert("Upload complete! Video URL updated.");
+        // Show success for 3 seconds
+        setTimeout(() => {
+          setUploadProgress("");
+          setUploadLoading(false);
+        }, 3000);
       } catch (e) {
         alert(`Upload failed: ${e}`);
-      } finally {
         setUploadLoading(false);
         setUploadProgress("");
       }
