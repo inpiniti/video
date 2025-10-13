@@ -1,5 +1,6 @@
-// Compress video to MP4 (H.265/HEVC video + AAC audio) via ffmpeg
-// iPhone/Safari compatible format with excellent quality/size ratio
+// Compress video to MP4 (H.264 video + AAC audio) via ffmpeg
+// Universal browser compatibility (Chrome, Safari, Firefox, Edge)
+// Optimized for high quality with good compression
 import { spawn } from "child_process";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -14,27 +15,36 @@ export async function compressVideo(
   console.log(`[Compressor] 🎬 Starting compression...`);
   console.log(`[Compressor] Input: ${inputPath}`);
   console.log(`[Compressor] Output: ${outputPath}`);
-  console.log(`[Compressor] Codec: H.265 (HEVC) + AAC (MP4)`);
+  console.log(
+    `[Compressor] Codec: H.264 (AVC) + AAC (MP4) - Universal compatibility`
+  );
 
-  // H.265/HEVC + AAC in MP4 container (iPhone/Safari compatible)
-  // -c:v libx265: H.265/HEVC video codec (excellent compression, widely supported)
-  // -crf 28: Constant quality (lower = higher quality; 28 is good balance for mobile)
-  // -preset medium: Encoding speed/quality tradeoff
-  // -tag:v hvc1: Use hvc1 tag for better iOS/Safari compatibility
-  // -c:a aac: AAC audio codec (universal compatibility)
-  // -b:a 128k: Audio bitrate
+  // H.264 + AAC in MP4 container (Universal browser support)
+  // -c:v libx264: H.264/AVC video codec (best compatibility)
+  // -crf 23: Constant quality (18=visually lossless, 23=high quality, 28=good quality)
+  //          23 is sweet spot for high quality with good compression
+  // -preset slow: Slower encoding but better compression (smaller file, same quality)
+  // -profile:v high: High profile for better compression
+  // -level 4.2: Compatibility level for most devices
   // -movflags +faststart: Enable progressive streaming (fast start playback)
+  // -c:a aac: AAC audio codec (universal compatibility)
+  // -b:a 128k: Audio bitrate (good quality for voice/music)
+  // -pix_fmt yuv420p: Color format for maximum compatibility
   const args = [
     "-i",
     inputPath,
     "-c:v",
-    "libx265",
+    "libx264",
     "-crf",
-    "28",
+    "23", // High quality
     "-preset",
-    "medium",
-    "-tag:v",
-    "hvc1",
+    "slow", // Better compression
+    "-profile:v",
+    "high",
+    "-level",
+    "4.2",
+    "-pix_fmt",
+    "yuv420p",
     "-c:a",
     "aac",
     "-b:a",
@@ -47,7 +57,7 @@ export async function compressVideo(
 
   console.log(`[Compressor] 🔧 FFmpeg command: ffmpeg ${args.join(" ")}`);
   console.log(
-    `[Compressor] ⏳ This may take several minutes... (Progress will be shown below)`
+    `[Compressor] ⏳ This may take several minutes... (slower preset for better compression)`
   );
 
   return new Promise<string>((resolve, reject) => {
