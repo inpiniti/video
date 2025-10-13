@@ -7,6 +7,8 @@ import {
   DialogTrigger,
   DialogContent,
   DialogClose,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -33,7 +35,8 @@ export function EditVideoDialog({ video }: { video: EditVideoData }) {
   const submit = async () => {
     setLoading(true);
     try {
-      if (!hasSupabase() || !supabase) throw new Error("Supabase not configured");
+      if (!hasSupabase() || !supabase)
+        throw new Error("Supabase not configured");
       const { error } = await supabase
         .from("videos")
         .update({
@@ -57,15 +60,19 @@ export function EditVideoDialog({ video }: { video: EditVideoData }) {
   const regenerateThumbnail = async () => {
     try {
       setRegenLoading(true);
-      if (!hasSupabase() || !supabase) throw new Error('Supabase not configured');
+      if (!hasSupabase() || !supabase)
+        throw new Error("Supabase not configured");
       // dynamic import to avoid circular
-      const { generateAndUploadThumbnail, saveThumbnailToSupabase } = await import('@/lib/thumbnailUploader');
-      const processingSrc = url.startsWith('http') ? `/api/video-proxy?u=${encodeURIComponent(url)}` : url;
+      const { generateAndUploadThumbnail, saveThumbnailToSupabase } =
+        await import("@/lib/thumbnailUploader");
+      const processingSrc = url.startsWith("http")
+        ? `/api/video-proxy?u=${encodeURIComponent(url)}`
+        : url;
       const { publicUrl } = await generateAndUploadThumbnail(processingSrc);
       await saveThumbnailToSupabase(video.id, publicUrl);
       setThumbnail(publicUrl);
     } catch (e) {
-      alert('Regen failed: ' + e);
+      alert("Regen failed: " + e);
     } finally {
       setRegenLoading(false);
     }
@@ -79,9 +86,10 @@ export function EditVideoDialog({ video }: { video: EditVideoData }) {
         </Button>
       </DialogTrigger>
       <DialogContent className="w-full max-w-md p-4 rounded-lg bg-white">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-medium">Edit Video</h3>
-        </div>
+        <DialogTitle>Edit Video</DialogTitle>
+        <DialogDescription>
+          Update video information and thumbnail
+        </DialogDescription>
         <div className="flex flex-col gap-2 mt-2">
           <label className="text-sm">Title</label>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -92,16 +100,38 @@ export function EditVideoDialog({ video }: { video: EditVideoData }) {
           <label className="text-sm">Actor</label>
           <Input value={actor} onChange={(e) => setActor(e.target.value)} />
           <div className="mt-2 flex flex-col gap-1">
-            <label className="text-sm flex items-center gap-2">Thumbnail URL
-              {regenLoading && <span className="text-[10px] text-gray-400">(generating...)</span>}
+            <label className="text-sm flex items-center gap-2">
+              Thumbnail URL
+              {regenLoading && (
+                <span className="text-[10px] text-gray-400">
+                  (generating...)
+                </span>
+              )}
             </label>
-            <Input value={thumbnail} onChange={(e) => setThumbnail(e.target.value)} placeholder="https://...jpg" />
+            <Input
+              value={thumbnail}
+              onChange={(e) => setThumbnail(e.target.value)}
+              placeholder="https://...jpg"
+            />
             <div className="flex gap-2">
-              <Button type="button" size="sm" variant="secondary" onClick={regenerateThumbnail} disabled={regenLoading}>
-                {regenLoading ? 'Regen...' : 'Generate from video'}
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={regenerateThumbnail}
+                disabled={regenLoading}
+              >
+                {regenLoading ? "Regen..." : "Generate from video"}
               </Button>
               {thumbnail && (
-                <a href={thumbnail} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline">open</a>
+                <a
+                  href={thumbnail}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 underline"
+                >
+                  open
+                </a>
               )}
             </div>
           </div>

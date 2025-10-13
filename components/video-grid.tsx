@@ -258,7 +258,7 @@ export default function VideoGrid(): React.ReactElement {
     }, [isTeraBoxId, teraBoxFileId]);
 
     const src = isTeraBoxId
-      ? teraBoxUrl || "" // Use fetched TeraBox URL directly
+      ? teraBoxUrl || null // Use fetched TeraBox URL directly, null if not loaded yet
       : /^https?:\/\//i.test(raw)
       ? raw
       : `/aom_yumi/${encodeURIComponent(raw)}`;
@@ -552,28 +552,30 @@ export default function VideoGrid(): React.ReactElement {
                   </div>
                 </div>
               )}
-              <video
-                ref={videoRef}
-                className="w-full h-full object-cover aspect-[9/16]"
-                style={{ maxHeight: "80vh" }}
-                controls
-                playsInline
-                preload="auto"
-                src={overrideSrc || src}
-                onError={() => {
-                  if (authTried) return;
-                  // Trigger auth flow via effect by toggling playing to re-run
-                  setAuthTried(true);
-                  // Kick the effect to run; it will detect failure and fetch token URL
-                  // Do a no-op play attempt to route into catch path
-                  if (videoRef.current) {
-                    void videoRef.current.play().catch(() => {
-                      /* handled in effect */
-                    });
-                  }
-                }}
-                autoPlay
-              />
+              {(overrideSrc || src) && (
+                <video
+                  ref={videoRef}
+                  className="w-full h-full object-cover aspect-[9/16]"
+                  style={{ maxHeight: "80vh" }}
+                  controls
+                  playsInline
+                  preload="auto"
+                  src={overrideSrc || src || undefined}
+                  onError={() => {
+                    if (authTried) return;
+                    // Trigger auth flow via effect by toggling playing to re-run
+                    setAuthTried(true);
+                    // Kick the effect to run; it will detect failure and fetch token URL
+                    // Do a no-op play attempt to route into catch path
+                    if (videoRef.current) {
+                      void videoRef.current.play().catch(() => {
+                        /* handled in effect */
+                      });
+                    }
+                  }}
+                  autoPlay
+                />
+              )}
               {authing && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <span className="px-2 py-1 text-xs rounded bg-black/60 text-white">
