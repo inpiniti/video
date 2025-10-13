@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
@@ -81,44 +81,82 @@ const Item = ({ video }) => {
   const [showVideo, setShowVideo] = useState(false);
   const [streamingUrl, setStreamingUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const itemRef = useRef(null);
+  const videoRef = useRef(null);
 
-  const handleImageClick = async () => {
-    if (showVideo) {
-      // 이미 비디오가 보이면 다시 이미지로
-      setShowVideo(false);
+  const loadAndPlayVideo = useCallback(async () => {
+    if (streamingUrl) {
+      setShowVideo(true);
       return;
     }
 
-    // 프록시 URL 생성 (서버에서 인증 처리)
-    if (!streamingUrl) {
-      setIsLoading(true);
-      try {
-        // /api/terabox-stream 프록시를 통해 스트리밍
-        // fileId 파라미터를 사용하면 서버에서 자동으로 fresh 링크를 가져오고 쿠키 추가
-        const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
-        setStreamingUrl(proxyUrl);
-        setShowVideo(true);
-      } catch (error) {
-        console.error("Error setting up streaming:", error);
-        alert("에러가 발생했습니다: " + error.message);
-      } finally {
-        setIsLoading(false);
-      }
-    } else {
-      // URL이 이미 있으면 바로 보여주기
+    setIsLoading(true);
+    try {
+      const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
+      setStreamingUrl(proxyUrl);
       setShowVideo(true);
+    } catch (error) {
+      console.error("Error setting up streaming:", error);
+    } finally {
+      setIsLoading(false);
     }
+  }, [streamingUrl, video.fs_id]);
+
+  // Intersection Observer로 화면에 보이는지 감지
+  useEffect(() => {
+    const currentRef = itemRef.current;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // 화면에 보이면 자동 재생
+        if (entry.isIntersecting && !showVideo && !streamingUrl) {
+          loadAndPlayVideo();
+        }
+
+        // 화면에서 벗어나면 비디오 일시정지
+        if (!entry.isIntersecting && videoRef.current) {
+          videoRef.current.pause();
+        } else if (entry.isIntersecting && videoRef.current && showVideo) {
+          videoRef.current.play();
+        }
+      },
+      {
+        threshold: 0.5, // 50% 이상 보이면 재생
+      }
+    );
+
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
+
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef);
+      }
+    };
+  }, [showVideo, streamingUrl, loadAndPlayVideo]);
+
+  const handleImageClick = async () => {
+    if (showVideo) {
+      setShowVideo(false);
+      return;
+    }
+    loadAndPlayVideo();
   };
 
   return (
-    <div className="border-b pb-4">
+    <div ref={itemRef} className="border-b pb-4">
       <div
         className="relative w-full cursor-pointer"
         onClick={handleImageClick}
       >
         {!showVideo ? (
           <>
-            <img className="w-full" src={video.thumbs.url3} alt="thumbnail" />
+            <img
+              className="w-full block"
+              src={video.thumbs.url3}
+              alt="thumbnail"
+            />
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
                 <div className="text-white">Loading...</div>
@@ -130,16 +168,19 @@ const Item = ({ video }) => {
           </>
         ) : (
           <video
-            className="w-full"
+            ref={videoRef}
+            className="w-full block"
+            style={{ aspectRatio: "auto" }}
             controls
             autoPlay
             playsInline
+            loop
+            muted
             src={streamingUrl}
             onError={(e) => {
               console.error("Video playback error:", e);
               setShowVideo(false);
               setStreamingUrl(null);
-              alert("비디오 재생에 실패했습니다.");
             }}
           >
             Your browser does not support the video tag.
