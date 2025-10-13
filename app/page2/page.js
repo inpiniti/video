@@ -125,8 +125,8 @@ const Item = ({ video }) => {
                 <div className="text-white">Loading...</div>
               </div>
             )}
-            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 opacity-0 hover:opacity-100 transition-opacity">
-              <div className="text-white text-4xl">▶</div>
+            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-20 opacity-0 hover:opacity-100 transition-all">
+              <div className="text-white text-4xl drop-shadow-lg">▶</div>
             </div>
           </>
         ) : (
@@ -166,7 +166,7 @@ const Bottom = () => {
     <div className="fixed bottom-0 w-full h-16 bg-white flex items-center justify-center px-4 border-t">
       <button
         onClick={handleAddClick}
-        className="w-14 h-14 bg-black rounded-full flex items-center justify-center hover:bg-gray-800 transition-colors shadow-lg"
+        className="w-14 h-14 bg-black rounded-full flex items-center justify-center hover:bg-opacity-70 transition-all shadow-lg"
         aria-label="추가"
       >
         <span className="text-white text-3xl font-light">+</span>

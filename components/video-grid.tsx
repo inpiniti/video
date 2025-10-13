@@ -266,7 +266,7 @@ export default function VideoGrid(): React.ReactElement {
     // Detect cross-origin (client side only)
     const isCrossOrigin = (() => {
       if (isTeraBoxId) return false; // TeraBox goes through our proxy
-      if (!isUrl) return false;
+      if (!isUrl || !src) return false;
       try {
         return new URL(src).origin !== window.location.origin;
       } catch {
@@ -274,7 +274,7 @@ export default function VideoGrid(): React.ReactElement {
       }
     })();
     let domain: string | null = null;
-    if (isUrl) {
+    if (isUrl && src) {
       try {
         const u = new URL(src);
         domain = u.hostname.replace(/^www\./, "");
