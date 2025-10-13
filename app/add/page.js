@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 
 const AddPage = () => {
   return (
@@ -49,10 +50,10 @@ const Header = () => {
     >
       <button
         onClick={handleBack}
-        className="text-2xl hover:opacity-70 transition-opacity"
+        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
         aria-label="뒤로 가기"
       >
-        ←
+        <ArrowLeft size={24} className="text-gray-700" />
       </button>
       <div className="text-2xl font-bold absolute left-1/2 transform -translate-x-1/2">
         추가
@@ -63,10 +64,36 @@ const Header = () => {
 };
 
 const Content = () => {
+  const [link, setLink] = useState("");
+
+  const handleSave = () => {
+    if (!link.trim()) {
+      alert("링크를 입력해주세요.");
+      return;
+    }
+    // TODO: 링크 저장 로직
+    console.log("Saving link:", link);
+    alert("저장되었습니다!");
+    setLink("");
+  };
+
   return (
     <div className="pt-16 pb-16 min-h-screen bg-gray-50">
-      <div className="p-4">
-        <p className="text-gray-600">여기에 콘텐츠를 추가하세요.</p>
+      <div className="p-6 max-w-2xl mx-auto">
+        <label className="block text-gray-500 text-sm mb-2">링크</label>
+        <input
+          type="text"
+          value={link}
+          onChange={(e) => setLink(e.target.value)}
+          placeholder="링크를 입력하세요"
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent mb-4"
+        />
+        <button
+          onClick={handleSave}
+          className="w-full py-3 bg-black text-white rounded-lg hover:bg-opacity-80 transition-all font-medium"
+        >
+          저장
+        </button>
       </div>
     </div>
   );

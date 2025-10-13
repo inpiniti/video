@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 
 const Page2 = () => {
   return (
@@ -169,7 +170,7 @@ const Bottom = () => {
         className="w-14 h-14 bg-black rounded-full flex items-center justify-center hover:bg-opacity-70 transition-all shadow-lg"
         aria-label="추가"
       >
-        <span className="text-white text-3xl font-light">+</span>
+        <Plus className="text-white" size={28} strokeWidth={2} />
       </button>
     </div>
   );

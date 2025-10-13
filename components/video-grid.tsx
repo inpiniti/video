@@ -400,7 +400,7 @@ export default function VideoGrid(): React.ReactElement {
     }, [overrideSrc, playing]);
 
     const handleGenerate = async () => {
-      if (!id) return;
+      if (!id || !src) return;
       try {
         setThumbLoading(true);
         const processingSrc = isCrossOrigin
