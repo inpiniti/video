@@ -203,9 +203,62 @@ export default function VideoGrid(): React.ReactElement {
     const isTeraBoxId = /^(\d+|mock_.+)$/.test(raw);
     const teraBoxFileId = isTeraBoxId ? raw : null;
 
-    // For TeraBox IDs, use proxy URL directly (no need to fetch link first)
+    // For TeraBox IDs, fetch streaming link and use it directly (refresh every 50 minutes)
+    const [teraBoxUrl, setTeraBoxUrl] = useState<string | null>(null);
+    const [teraBoxError, setTeraBoxError] = useState<string | null>(null);
+
+    useEffect(() => {
+      if (!isTeraBoxId || !teraBoxFileId) return;
+
+      let mounted = true;
+      let refreshTimer: NodeJS.Timeout | null = null;
+
+      const fetchTeraBoxUrl = async () => {
+        try {
+          console.log("[VideoGrid] Fetching TeraBox URL for:", teraBoxFileId);
+          const res = await fetch(
+            `/api/terabox-link?fileId=${encodeURIComponent(teraBoxFileId)}`
+          );
+
+          if (!res.ok) {
+            throw new Error(`Failed to get TeraBox link: ${res.status}`);
+          }
+
+          const data = await res.json();
+
+          if (mounted && data.streamingLink) {
+            console.log("[VideoGrid] TeraBox URL obtained");
+            setTeraBoxUrl(data.streamingLink);
+            setTeraBoxError(null);
+
+            // Refresh link every 50 minutes (before 1-hour expiration)
+            refreshTimer = setTimeout(() => {
+              if (mounted) {
+                console.log("[VideoGrid] Refreshing expired TeraBox URL");
+                void fetchTeraBoxUrl();
+              }
+            }, 50 * 60 * 1000); // 50 minutes
+          }
+        } catch (error) {
+          console.error("[VideoGrid] Failed to fetch TeraBox URL:", error);
+          if (mounted) {
+            setTeraBoxError(
+              error instanceof Error ? error.message : "Failed to load video"
+            );
+          }
+        }
+      };
+
+      void fetchTeraBoxUrl();
+
+      return () => {
+        mounted = false;
+        if (refreshTimer) clearTimeout(refreshTimer);
+      };
+    }, [isTeraBoxId, teraBoxFileId]);
+
     const src = isTeraBoxId
-      ? `/api/terabox-stream?fileId=${encodeURIComponent(teraBoxFileId!)}`
+      ? teraBoxUrl || "" // Use fetched TeraBox URL directly
       : /^https?:\/\//i.test(raw)
       ? raw
       : `/aom_yumi/${encodeURIComponent(raw)}`;
@@ -473,6 +526,32 @@ export default function VideoGrid(): React.ReactElement {
             </div>
           ) : thumbnail && !isImage && playing ? (
             <div className="relative">
+              {isTeraBoxId && !teraBoxUrl && !teraBoxError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-10">
+                  <span className="px-3 py-2 text-sm rounded bg-black/80 text-white">
+                    Loading TeraBox video...
+                  </span>
+                </div>
+              )}
+              {teraBoxError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-10">
+                  <div className="text-center px-4">
+                    <span className="block px-3 py-2 text-sm rounded bg-red-600/90 text-white mb-2">
+                      {teraBoxError}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTeraBoxError(null);
+                        setPlaying(false);
+                      }}
+                      className="px-3 py-1 text-xs rounded bg-white/90 text-black hover:bg-white"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
               <video
                 ref={videoRef}
                 className="w-full h-full object-cover aspect-[9/16]"
