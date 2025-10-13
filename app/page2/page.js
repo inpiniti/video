@@ -6,10 +6,9 @@ import { Plus } from "lucide-react";
 
 const Page2 = () => {
   return (
-    <div className="w-screen  h-screen">
+    <div className="w-screen h-screen">
       <Header />
       <Content />
-      <Bottom />
     </div>
   );
 };
@@ -17,6 +16,7 @@ const Page2 = () => {
 export default Page2;
 
 const Header = () => {
+  const router = useRouter();
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
@@ -37,16 +37,27 @@ const Header = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, [lastScrollY]);
 
+  const handleAddClick = () => {
+    router.push("/add");
+  };
+
   return (
     <div
-      className={`fixed top-0 w-full h-16 bg-white flex items-center justify-between px-4 transition-transform duration-300 ease-in-out z-50 ${
+      className={`fixed top-0 w-full h-16 flex items-center justify-between px-4 transition-transform duration-300 ease-in-out z-50 ${
         isVisible ? "translate-y-0" : "-translate-y-full"
       }`}
     >
+      <div></div>
       <div className="text-2xl font-bold absolute left-1/2 transform -translate-x-1/2">
         Instagram
       </div>
-      <div></div>
+      <button
+        onClick={handleAddClick}
+        className="w-10 h-10 bg-black rounded-full flex items-center justify-center hover:bg-opacity-70 transition-all shadow-md"
+        aria-label="추가"
+      >
+        <Plus className="text-white" size={20} strokeWidth={2} />
+      </button>
     </div>
   );
 };
@@ -191,26 +202,6 @@ const Item = ({ video }) => {
         <span className="font-bold">{video.fs_id}</span>
         <span>{video.server_filename}</span>
       </div>
-    </div>
-  );
-};
-
-const Bottom = () => {
-  const router = useRouter();
-
-  const handleAddClick = () => {
-    router.push("/add");
-  };
-
-  return (
-    <div className="fixed bottom-0 w-full h-16 bg-white flex items-center justify-center px-4 border-t">
-      <button
-        onClick={handleAddClick}
-        className="w-14 h-14 bg-black rounded-full flex items-center justify-center hover:bg-opacity-70 transition-all shadow-lg"
-        aria-label="추가"
-      >
-        <Plus className="text-white" size={28} strokeWidth={2} />
-      </button>
     </div>
   );
 };

@@ -9,7 +9,6 @@ const AddPage = () => {
     <div className="w-screen h-screen">
       <Header />
       <Content />
-      <Bottom />
     </div>
   );
 };
@@ -95,14 +94,6 @@ const Content = () => {
           저장
         </button>
       </div>
-    </div>
-  );
-};
-
-const Bottom = () => {
-  return (
-    <div className="fixed bottom-0 w-full h-16 bg-white flex items-center justify-center px-4 border-t">
-      <div className="text-gray-500">Bottom Bar</div>
     </div>
   );
 };
