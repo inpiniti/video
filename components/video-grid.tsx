@@ -199,66 +199,12 @@ export default function VideoGrid(): React.ReactElement {
   function Card({ file }: { file: FileEntry }) {
     const raw = typeof file === "string" ? file : file.url;
 
-    // Detect TeraBox file ID format: pure numeric ID or starting with "mock_"
-    const isTeraBoxId = /^(\d+|mock_.+)$/.test(raw);
-    const teraBoxFileId = isTeraBoxId ? raw : null;
-
-    // For TeraBox IDs, fetch streaming link and use it directly (refresh every 50 minutes)
-    const [teraBoxUrl, setTeraBoxUrl] = useState<string | null>(null);
-    const [teraBoxError, setTeraBoxError] = useState<string | null>(null);
-
-    useEffect(() => {
-      if (!isTeraBoxId || !teraBoxFileId) return;
-
-      let mounted = true;
-      let refreshTimer: NodeJS.Timeout | null = null;
-
-      const fetchTeraBoxUrl = async () => {
-        try {
-          console.log("[VideoGrid] Fetching TeraBox URL for:", teraBoxFileId);
-          const res = await fetch(
-            `/api/terabox-link?fileId=${encodeURIComponent(teraBoxFileId)}`
-          );
-
-          if (!res.ok) {
-            throw new Error(`Failed to get TeraBox link: ${res.status}`);
-          }
-
-          const data = await res.json();
-
-          if (mounted && data.streamingLink) {
-            console.log("[VideoGrid] TeraBox URL obtained");
-            setTeraBoxUrl(data.streamingLink);
-            setTeraBoxError(null);
-
-            // Refresh link every 50 minutes (before 1-hour expiration)
-            refreshTimer = setTimeout(() => {
-              if (mounted) {
-                console.log("[VideoGrid] Refreshing expired TeraBox URL");
-                void fetchTeraBoxUrl();
-              }
-            }, 50 * 60 * 1000); // 50 minutes
-          }
-        } catch (error) {
-          console.error("[VideoGrid] Failed to fetch TeraBox URL:", error);
-          if (mounted) {
-            setTeraBoxError(
-              error instanceof Error ? error.message : "Failed to load video"
-            );
-          }
-        }
-      };
-
-      void fetchTeraBoxUrl();
-
-      return () => {
-        mounted = false;
-        if (refreshTimer) clearTimeout(refreshTimer);
-      };
-    }, [isTeraBoxId, teraBoxFileId]);
+    // Detect TeraBox file ID format: terabox://[fileId]
+    const isTeraBoxId = raw.startsWith("terabox://");
+    const teraBoxFileId = isTeraBoxId ? raw.replace("terabox://", "") : null;
 
     const src = isTeraBoxId
-      ? teraBoxUrl || null // Use fetched TeraBox URL directly, null if not loaded yet
+      ? `/api/terabox-stream?fileId=${encodeURIComponent(teraBoxFileId!)}`
       : /^https?:\/\//i.test(raw)
       ? raw
       : `/aom_yumi/${encodeURIComponent(raw)}`;
@@ -266,7 +212,7 @@ export default function VideoGrid(): React.ReactElement {
     // Detect cross-origin (client side only)
     const isCrossOrigin = (() => {
       if (isTeraBoxId) return false; // TeraBox goes through our proxy
-      if (!isUrl || !src) return false;
+      if (!isUrl) return false;
       try {
         return new URL(src).origin !== window.location.origin;
       } catch {
@@ -274,7 +220,7 @@ export default function VideoGrid(): React.ReactElement {
       }
     })();
     let domain: string | null = null;
-    if (isUrl && src) {
+    if (isUrl) {
       try {
         const u = new URL(src);
         domain = u.hostname.replace(/^www\./, "");
@@ -400,7 +346,7 @@ export default function VideoGrid(): React.ReactElement {
     }, [overrideSrc, playing]);
 
     const handleGenerate = async () => {
-      if (!id || !src) return;
+      if (!id) return;
       try {
         setThumbLoading(true);
         const processingSrc = isCrossOrigin
@@ -526,56 +472,28 @@ export default function VideoGrid(): React.ReactElement {
             </div>
           ) : thumbnail && !isImage && playing ? (
             <div className="relative">
-              {isTeraBoxId && !teraBoxUrl && !teraBoxError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-10">
-                  <span className="px-3 py-2 text-sm rounded bg-black/80 text-white">
-                    Loading TeraBox video...
-                  </span>
-                </div>
-              )}
-              {teraBoxError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-10">
-                  <div className="text-center px-4">
-                    <span className="block px-3 py-2 text-sm rounded bg-red-600/90 text-white mb-2">
-                      {teraBoxError}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTeraBoxError(null);
-                        setPlaying(false);
-                      }}
-                      className="px-3 py-1 text-xs rounded bg-white/90 text-black hover:bg-white"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              )}
-              {(overrideSrc || src) && (
-                <video
-                  ref={videoRef}
-                  className="w-full h-full object-cover aspect-[9/16]"
-                  style={{ maxHeight: "80vh" }}
-                  controls
-                  playsInline
-                  preload="auto"
-                  src={overrideSrc || src || undefined}
-                  onError={() => {
-                    if (authTried) return;
-                    // Trigger auth flow via effect by toggling playing to re-run
-                    setAuthTried(true);
-                    // Kick the effect to run; it will detect failure and fetch token URL
-                    // Do a no-op play attempt to route into catch path
-                    if (videoRef.current) {
-                      void videoRef.current.play().catch(() => {
-                        /* handled in effect */
-                      });
-                    }
-                  }}
-                  autoPlay
-                />
-              )}
+              <video
+                ref={videoRef}
+                className="w-full h-full object-cover aspect-[9/16]"
+                style={{ maxHeight: "80vh" }}
+                controls
+                playsInline
+                preload="auto"
+                src={overrideSrc || src}
+                onError={() => {
+                  if (authTried) return;
+                  // Trigger auth flow via effect by toggling playing to re-run
+                  setAuthTried(true);
+                  // Kick the effect to run; it will detect failure and fetch token URL
+                  // Do a no-op play attempt to route into catch path
+                  if (videoRef.current) {
+                    void videoRef.current.play().catch(() => {
+                      /* handled in effect */
+                    });
+                  }
+                }}
+                autoPlay
+              />
               {authing && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <span className="px-2 py-1 text-xs rounded bg-black/60 text-white">
@@ -643,7 +561,7 @@ export default function VideoGrid(): React.ReactElement {
           <div className="font-semibold text-sm text-black line-clamp-2">
             {title}
           </div>
-          <div className="text-[11px] text-gray-400 flex flex-col items-center justify-between">
+          <div className="text-[11px] text-gray-400 flex items-center justify-between">
             <span>{date}</span>
             <div className="flex items-center gap-1">
               {id && usingSupabase && (
