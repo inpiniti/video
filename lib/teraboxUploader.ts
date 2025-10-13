@@ -12,6 +12,25 @@ interface TeraBoxCredentials {
   browserId: string; // Required: Browser ID from session
 }
 
+// fetchFileList
+export async function fetchFileList(folderName: string): Promise<unknown> {
+  const credentials = getCredentials();
+  if (!credentials) {
+    throw new Error("TeraBox credentials not configured");
+  }
+  try {
+    // Dynamic import to avoid loading heavy dependency upfront
+    const TeraboxUploader = (await import("terabox-upload-tool")).default;
+    const uploader = new TeraboxUploader(credentials);
+    const fileList = await uploader.fetchFileList(folderName);
+    console.log("[TeraBox] Fetched file list:", fileList);
+    return fileList;
+  } catch (error) {
+    console.error("[TeraBox] Failed to fetch file list:", error);
+    throw error;
+  }
+}
+
 // NEW APPROACH: Return TeraBox file ID instead of temporary download link
 // The file ID is permanent and can be used to generate fresh streaming links on-demand
 export async function uploadToTeraBox(
