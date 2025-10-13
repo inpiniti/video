@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 const Page2 = () => {
   return (
@@ -155,9 +156,21 @@ const Item = ({ video }) => {
 };
 
 const Bottom = () => {
+  const router = useRouter();
+
+  const handleAddClick = () => {
+    router.push("/add");
+  };
+
   return (
     <div className="fixed bottom-0 w-full h-16 bg-white flex items-center justify-center px-4 border-t">
-      <div className="text-gray-500">Bottom Bar</div>
+      <button
+        onClick={handleAddClick}
+        className="w-14 h-14 bg-black rounded-full flex items-center justify-center hover:bg-gray-800 transition-colors shadow-lg"
+        aria-label="추가"
+      >
+        <span className="text-white text-3xl font-light">+</span>
+      </button>
     </div>
   );
 };

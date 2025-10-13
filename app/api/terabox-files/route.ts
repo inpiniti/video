@@ -35,15 +35,13 @@ export async function GET(request: NextRequest) {
 
     console.log("[TeraBox Files] Result:", JSON.stringify(result, null, 2));
 
-    // Parse the result
-    if (result.success && result.data) {
-      const files = result.data;
-
+    // fetchFileList returns FileInfo[] directly
+    if (Array.isArray(result)) {
       return NextResponse.json({
         success: true,
         folder,
-        files: files.list || [],
-        count: files.list?.length || 0,
+        files: result,
+        count: result.length,
       });
     } else {
       return NextResponse.json(
