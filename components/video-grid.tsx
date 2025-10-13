@@ -1,16 +1,16 @@
-"use client";
+'use client';
 
-import React, { useEffect, useState, useRef } from "react";
-import Image from "next/image";
-import { supabase, hasSupabase } from "@/lib/supabaseClient";
-import { EditVideoDialog } from "./edit-video-dialog";
+import React, { useEffect, useState, useRef } from 'react';
+import Image from 'next/image';
+import { supabase, hasSupabase } from '@/lib/supabaseClient';
+import { EditVideoDialog } from './edit-video-dialog';
 import {
   generateAndUploadThumbnail,
   saveThumbnailToSupabase,
-} from "@/lib/thumbnailUploader";
-import { Button } from "@/components/ui/button";
-import { DropboxAuth } from "./dropbox-auth";
-import { Play } from "lucide-react";
+} from '@/lib/thumbnailUploader';
+import { Button } from '@/components/ui/button';
+import { DropboxAuth } from './dropbox-auth';
+import { Play } from 'lucide-react';
 
 // Clean implementation: all thumbnail generation code removed.
 
@@ -35,39 +35,39 @@ export default function VideoGrid(): React.ReactElement {
   useEffect(() => {
     if (!previewImage) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPreviewImage(null);
+      if (e.key === 'Escape') setPreviewImage(null);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [previewImage]);
 
   const refreshFromSupabase = async () => {
     try {
       if (!hasSupabase() || !supabase) return;
       const { data, error } = await supabase
-        .from("videos")
-        .select("id,title,date,url,actor,thumbnail")
-        .order("id", { ascending: true })
+        .from('videos')
+        .select('id,title,date,url,actor,thumbnail')
+        .order('id', { ascending: true })
         .limit(1000);
       if (!error && Array.isArray(data)) {
         const mapped = (data as any[]) // eslint-disable-line @typescript-eslint/no-explicit-any
           .map((r) => {
-            if (!r || typeof r !== "object") return null;
-            const url = typeof r.url === "string" ? r.url : undefined;
+            if (!r || typeof r !== 'object') return null;
+            const url = typeof r.url === 'string' ? r.url : undefined;
             if (!url) return null;
             return {
               id:
-                typeof r.id === "number"
+                typeof r.id === 'number'
                   ? r.id
-                  : typeof r.id === "string"
+                  : typeof r.id === 'string'
                   ? parseInt(r.id, 10) || undefined
                   : undefined,
-              title: typeof r.title === "string" ? r.title : undefined,
-              date: typeof r.date === "string" ? r.date : undefined,
+              title: typeof r.title === 'string' ? r.title : undefined,
+              date: typeof r.date === 'string' ? r.date : undefined,
               url,
-              actor: typeof r.actor === "string" ? r.actor : undefined,
+              actor: typeof r.actor === 'string' ? r.actor : undefined,
               thumbnail:
-                typeof (r as { thumbnail?: unknown }).thumbnail === "string"
+                typeof (r as { thumbnail?: unknown }).thumbnail === 'string'
                   ? (r as { thumbnail?: string }).thumbnail
                   : undefined,
             };
@@ -90,31 +90,31 @@ export default function VideoGrid(): React.ReactElement {
         triedSupabase = true;
         try {
           const { data, error } = await supabase
-            .from("videos")
-            .select("id,title,date,url,actor,thumbnail")
-            .order("id", { ascending: true })
+            .from('videos')
+            .select('id,title,date,url,actor,thumbnail')
+            .order('id', { ascending: true })
             .limit(1000);
           if (!mounted) return;
           if (!error && Array.isArray(data)) {
             setUsingSupabase(true);
             const mapped = (data as any[]) // eslint-disable-line @typescript-eslint/no-explicit-any
               .map((r) => {
-                if (!r || typeof r !== "object") return null;
-                const url = typeof r.url === "string" ? r.url : undefined;
+                if (!r || typeof r !== 'object') return null;
+                const url = typeof r.url === 'string' ? r.url : undefined;
                 if (!url) return null;
                 return {
                   id:
-                    typeof r.id === "number"
+                    typeof r.id === 'number'
                       ? r.id
-                      : typeof r.id === "string"
+                      : typeof r.id === 'string'
                       ? parseInt(r.id, 10) || undefined
                       : undefined,
-                  title: typeof r.title === "string" ? r.title : undefined,
-                  date: typeof r.date === "string" ? r.date : undefined,
+                  title: typeof r.title === 'string' ? r.title : undefined,
+                  date: typeof r.date === 'string' ? r.date : undefined,
                   url,
-                  actor: typeof r.actor === "string" ? r.actor : undefined,
+                  actor: typeof r.actor === 'string' ? r.actor : undefined,
                   thumbnail:
-                    typeof (r as { thumbnail?: unknown }).thumbnail === "string"
+                    typeof (r as { thumbnail?: unknown }).thumbnail === 'string'
                       ? (r as { thumbnail?: string }).thumbnail
                       : undefined,
                 };
@@ -130,14 +130,14 @@ export default function VideoGrid(): React.ReactElement {
       }
       // Fallback to static JSON
       try {
-        const res = await fetch("/aom_yumi.json");
-        if (!res.ok) throw new Error("HTTP " + res.status);
+        const res = await fetch('/aom_yumi.json');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         if (!mounted) return;
         if (Array.isArray(data)) {
           if (triedSupabase) setUsingSupabase(false);
           setFiles(data as FileEntry[]);
-        } else setError("Invalid JSON format");
+        } else setError('Invalid JSON format');
       } catch (e: unknown) {
         if (!mounted) return;
         setError(String(e));
@@ -153,11 +153,11 @@ export default function VideoGrid(): React.ReactElement {
     const handler = () => {
       refreshFromSupabase();
     };
-    window.addEventListener("video-added", handler as EventListener);
-    window.addEventListener("video-updated", handler as EventListener);
+    window.addEventListener('video-added', handler as EventListener);
+    window.addEventListener('video-updated', handler as EventListener);
     return () => {
-      window.removeEventListener("video-added", handler as EventListener);
-      window.removeEventListener("video-updated", handler as EventListener);
+      window.removeEventListener('video-added', handler as EventListener);
+      window.removeEventListener('video-updated', handler as EventListener);
     };
   }, []);
 
@@ -169,41 +169,49 @@ export default function VideoGrid(): React.ReactElement {
     try {
       if (/^https?:\/\//i.test(name)) {
         const u = new URL(name);
-        base = u.pathname.split("/").filter(Boolean).pop() || name;
+        base = u.pathname.split('/').filter(Boolean).pop() || name;
       }
     } catch {
       /* ignore */
     }
-    base = base.replace(/\.[^.]+$/, "");
+    base = base.replace(/\.[^.]+$/, '');
     const m = base.match(/^(\d{4})[_-]?(\d{2})[_-]?(\d{2})[_-_]?(.*)$/);
     if (m) {
       const [, year, month, day] = m;
-      let title = m[4] || "";
+      let title = m[4] || '';
       title = title
-        .replace(/[_-]*source$/i, "")
-        .replace(/[_-]+/g, " ")
+        .replace(/[_-]*source$/i, '')
+        .replace(/[_-]+/g, ' ')
         .trim();
       const d = new Date(`${year}-${month}-${day}`);
       const prettyDate = !isNaN(d.getTime())
         ? d.toLocaleDateString(undefined, {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
           })
         : `${year}-${month}-${day}`;
       return { date: prettyDate, title: title || base };
     }
-    return { date: "", title: base };
+    return { date: '', title: base };
   };
 
   function Card({ file }: { file: FileEntry }) {
-    const raw = typeof file === "string" ? file : file.url;
-    const src = /^https?:\/\//i.test(raw)
+    const raw = typeof file === 'string' ? file : file.url;
+
+    // Detect TeraBox file ID format: terabox://[fileId]
+    const isTeraBoxId = raw.startsWith('terabox://');
+    const teraBoxFileId = isTeraBoxId ? raw.replace('terabox://', '') : null;
+
+    const src = isTeraBoxId
+      ? `/api/terabox-stream?fileId=${encodeURIComponent(teraBoxFileId!)}`
+      : /^https?:\/\//i.test(raw)
       ? raw
       : `/aom_yumi/${encodeURIComponent(raw)}`;
     const isUrl = /^https?:\/\//i.test(raw);
     // Detect cross-origin (client side only)
     const isCrossOrigin = (() => {
+      if (isTeraBoxId) return false; // TeraBox goes through our proxy
       if (!isUrl) return false;
       try {
         return new URL(src).origin !== window.location.origin;
@@ -215,7 +223,7 @@ export default function VideoGrid(): React.ReactElement {
     if (isUrl) {
       try {
         const u = new URL(src);
-        domain = u.hostname.replace(/^www\./, "");
+        domain = u.hostname.replace(/^www\./, '');
       } catch {
         /* ignore */
       }
@@ -231,26 +239,26 @@ export default function VideoGrid(): React.ReactElement {
       }
       return raw.toLowerCase();
     })();
-    const ext = (lower.match(/\.([a-z0-9]+)(?:$|[?#])/) || [, ""])[1];
+    const ext = (lower.match(/\.([a-z0-9]+)(?:$|[?#])/) || [, ''])[1];
     const IMAGE_EXTS = new Set([
-      "jpg",
-      "jpeg",
-      "png",
-      "webp",
-      "gif",
-      "avif",
-      "bmp",
-      "svg",
+      'jpg',
+      'jpeg',
+      'png',
+      'webp',
+      'gif',
+      'avif',
+      'bmp',
+      'svg',
     ]);
     const isImage = IMAGE_EXTS.has(ext);
     const parsed = parseFile(raw);
     const title =
-      typeof file === "string" ? parsed.title : file.title ?? parsed.title;
+      typeof file === 'string' ? parsed.title : file.title ?? parsed.title;
     const date =
-      typeof file === "string" ? parsed.date : file.date ?? parsed.date;
-    const actor = typeof file !== "string" ? file.actor : undefined;
-    const id = typeof file !== "string" ? file.id : undefined;
-    const thumbnail = typeof file !== "string" ? file.thumbnail : undefined;
+      typeof file === 'string' ? parsed.date : file.date ?? parsed.date;
+    const actor = typeof file !== 'string' ? file.actor : undefined;
+    const id = typeof file !== 'string' ? file.id : undefined;
+    const thumbnail = typeof file !== 'string' ? file.thumbnail : undefined;
     const [thumbLoading, setThumbLoading] = useState(false);
     const [uploadLoading, setUploadLoading] = useState(false);
     const [playing, setPlaying] = useState(false);
@@ -286,21 +294,21 @@ export default function VideoGrid(): React.ReactElement {
               if (!should) return;
               // Extract key: prefer "/d/{key}" pattern
               let key: string | null = null;
-              const parts = u.pathname.split("/").filter(Boolean);
-              const idx = parts.findIndex((p) => p === "d");
+              const parts = u.pathname.split('/').filter(Boolean);
+              const idx = parts.findIndex((p) => p === 'd');
               if (idx >= 0 && parts[idx + 1]) key = parts[idx + 1];
               if (!key) key = parts.pop() || null;
               if (!key) return;
               setAuthing(true);
               const resp = await fetch(
                 `/api/cyberdrop-auth?key=${encodeURIComponent(key)}`,
-                { cache: "no-store" }
+                { cache: 'no-store' }
               );
               if (resp.ok) {
                 let tokenUrl: string | null = null;
                 try {
                   const j = await resp.json();
-                  if (j && typeof j.url === "string") tokenUrl = j.url;
+                  if (j && typeof j.url === 'string') tokenUrl = j.url;
                 } catch {
                   // fallback: read text and try naive url extraction
                   try {
@@ -350,65 +358,65 @@ export default function VideoGrid(): React.ReactElement {
         setFiles(
           (prev) =>
             prev?.map((f) =>
-              typeof f !== "string" && f.id === id
+              typeof f !== 'string' && f.id === id
                 ? { ...f, thumbnail: publicUrl }
                 : f
             ) || prev
         );
       } catch (e) {
-        alert("Thumbnail failed: " + e);
+        alert('Thumbnail failed: ' + e);
       } finally {
         setThumbLoading(false);
       }
     };
 
-    const [uploadProgress, setUploadProgress] = useState<string>("");
+    const [uploadProgress, setUploadProgress] = useState<string>('');
 
     const handleUpload = async () => {
       if (!id || !hasSupabase() || !supabase) return;
 
       try {
         setUploadLoading(true);
-        setUploadProgress("Enqueueing...");
+        setUploadProgress('Enqueueing...');
 
         // Get Supabase credentials from environment
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
         if (!supabaseUrl || !supabaseKey) {
-          throw new Error("Supabase credentials not found");
+          throw new Error('Supabase credentials not found');
         }
 
         // Add [upload] tag to title
-        const currentTitle = title || "";
+        const currentTitle = title || '';
         const uploadingTitle = `[upload] ${currentTitle}`.trim();
 
         const { error: updateError } = await supabase
-          .from("videos")
+          .from('videos')
           .update({ title: uploadingTitle })
-          .eq("id", id);
+          .eq('id', id);
 
         if (updateError) {
-          console.error("Failed to add [upload] tag:", updateError);
-          throw new Error("Failed to prepare upload");
+          console.error('Failed to add [upload] tag:', updateError);
+          throw new Error('Failed to prepare upload');
         }
 
         // Update local state
         setFiles(
           (prev) =>
             prev?.map((f) =>
-              typeof f !== "string" && f.id === id
+              typeof f !== 'string' && f.id === id
                 ? { ...f, title: uploadingTitle }
                 : f
             ) || prev
         );
 
-        setUploadProgress("Starting server job...");
+        setUploadProgress('Starting server job...');
 
         // Send to server with Supabase credentials
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id,
             url: raw,
@@ -417,20 +425,20 @@ export default function VideoGrid(): React.ReactElement {
           }),
         });
 
-        if (!res.ok) throw new Error("Upload API failed");
+        if (!res.ok) throw new Error('Upload API failed');
 
         // Done! Server handles everything
-        setUploadProgress("✅ Upload started! Processing in background...");
+        setUploadProgress('✅ Upload started! Processing in background...');
 
         // Show success for 3 seconds
         setTimeout(() => {
-          setUploadProgress("");
+          setUploadProgress('');
           setUploadLoading(false);
         }, 3000);
       } catch (e) {
         alert(`Upload failed: ${e}`);
         setUploadLoading(false);
-        setUploadProgress("");
+        setUploadProgress('');
       }
     };
 
@@ -441,7 +449,7 @@ export default function VideoGrid(): React.ReactElement {
             <div className="relative w-full h-full aspect-[9/16]">
               <Image
                 src={thumbnail}
-                alt={title || "thumbnail"}
+                alt={title || 'thumbnail'}
                 width={360}
                 height={640}
                 className="w-full h-full object-cover"
@@ -467,7 +475,7 @@ export default function VideoGrid(): React.ReactElement {
               <video
                 ref={videoRef}
                 className="w-full h-full object-cover aspect-[9/16]"
-                style={{ maxHeight: "80vh" }}
+                style={{ maxHeight: '80vh' }}
                 controls
                 playsInline
                 preload="auto"
@@ -497,14 +505,14 @@ export default function VideoGrid(): React.ReactElement {
           ) : thumbnail && isImage ? (
             <Image
               src={thumbnail}
-              alt={title || "thumbnail"}
+              alt={title || 'thumbnail'}
               width={360}
               height={640}
               className="w-full h-full object-cover aspect-[9/16]"
               unoptimized
               onClick={() => {
                 try {
-                  window.open(src, "_blank", "noopener,noreferrer");
+                  window.open(src, '_blank', 'noopener,noreferrer');
                 } catch {
                   /* ignore */
                 }
@@ -513,14 +521,14 @@ export default function VideoGrid(): React.ReactElement {
           ) : isImage ? (
             <Image
               src={src}
-              alt={title || "image"}
+              alt={title || 'image'}
               width={360}
               height={640}
               className="w-full h-full object-cover aspect-[9/16]"
               unoptimized
               onClick={() => {
                 try {
-                  window.open(src, "_blank", "noopener,noreferrer");
+                  window.open(src, '_blank', 'noopener,noreferrer');
                 } catch {
                   /* ignore */
                 }
@@ -529,7 +537,7 @@ export default function VideoGrid(): React.ReactElement {
           ) : (
             <video
               className="w-full h-full object-cover aspect-[9/16]"
-              style={{ maxHeight: "80vh" }}
+              style={{ maxHeight: '80vh' }}
               controls
               playsInline
               preload="none"
@@ -562,11 +570,11 @@ export default function VideoGrid(): React.ReactElement {
                     video={{
                       id,
                       title: title || null,
-                      date: typeof file !== "string" ? file.date ?? null : null,
+                      date: typeof file !== 'string' ? file.date ?? null : null,
                       url: src,
                       actor: actor || null,
                       thumbnail:
-                        typeof file !== "string"
+                        typeof file !== 'string'
                           ? file.thumbnail ?? null
                           : null,
                     }}
@@ -578,11 +586,11 @@ export default function VideoGrid(): React.ReactElement {
                     onClick={handleGenerate}
                     title={
                       isCrossOrigin
-                        ? "Using proxy fetch for cross-origin video"
+                        ? 'Using proxy fetch for cross-origin video'
                         : undefined
                     }
                   >
-                    {thumbLoading ? "..." : thumbnail ? "Regen" : "Thumbnail"}
+                    {thumbLoading ? '...' : thumbnail ? 'Regen' : 'Thumbnail'}
                   </Button>
                   <Button
                     variant="outline"
@@ -591,13 +599,13 @@ export default function VideoGrid(): React.ReactElement {
                     onClick={handleUpload}
                     title={
                       uploadProgress ||
-                      "Download, compress (WebM AV1+Opus), upload to TeraBox"
+                      'Download, compress (WebM AV1+Opus), upload to TeraBox'
                     }
                     className="min-w-[100px]"
                   >
                     {uploadLoading
-                      ? uploadProgress || "Uploading..."
-                      : "Upload"}
+                      ? uploadProgress || 'Uploading...'
+                      : 'Upload'}
                   </Button>
                 </>
               )}
@@ -619,7 +627,7 @@ export default function VideoGrid(): React.ReactElement {
       <div className="grid auto-rows-fr gap-4 grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
         {files.map((f, i) => {
           const key =
-            typeof f === "string"
+            typeof f === 'string'
               ? f
               : f.id
               ? `id:${f.id}`

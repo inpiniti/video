@@ -1,78 +1,109 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
+import { getTeraBoxStreamingLink } from '@/lib/teraboxUploader';
 
 // Proxy TeraBox download link for video streaming with Range support
 // This allows <video> tags to play TeraBox videos with seek support
+//
+// NEW: Supports both direct URL and fileId parameter
+// - url: direct TeraBox download link (temporary, may expire)
+// - fileId: TeraBox file ID (permanent, generates fresh link on-demand)
 export async function GET(req: NextRequest) {
-  const url = req.nextUrl.searchParams.get("url");
+  const url = req.nextUrl.searchParams.get('url');
+  const fileId = req.nextUrl.searchParams.get('fileId');
 
-  if (!url) {
+  if (!url && !fileId) {
     return NextResponse.json(
-      { error: "Missing url parameter" },
+      { error: 'Missing url or fileId parameter' },
       { status: 400 }
     );
   }
 
   try {
-    console.log("[TeraBox Stream] 📹 Streaming request for:", url.substring(0, 100) + "...");
-    
+    // If fileId provided, get fresh streaming link
+    let streamingUrl = url;
+    if (fileId) {
+      console.log('[TeraBox Stream] 🔑 Getting fresh link for fileId:', fileId);
+      streamingUrl = await getTeraBoxStreamingLink(fileId);
+      console.log('[TeraBox Stream] ✅ Fresh link obtained');
+    }
+
+    if (!streamingUrl) {
+      throw new Error('No streaming URL available');
+    }
+
+    console.log(
+      '[TeraBox Stream] 📹 Streaming request for:',
+      streamingUrl.substring(0, 100) + '...'
+    );
+
     // Get Range header from client request
-    const rangeHeader = req.headers.get("range");
+    const rangeHeader = req.headers.get('range');
     if (rangeHeader) {
-      console.log("[TeraBox Stream] 📊 Range request:", rangeHeader);
+      console.log('[TeraBox Stream] 📊 Range request:', rangeHeader);
     }
 
     // Prepare headers for TeraBox request
     const teraboxHeaders: Record<string, string> = {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Referer": "https://www.terabox.com/",
-      "Accept": "video/webm,video/ogg,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5",
-      "Accept-Language": "en-US,en;q=0.9",
-      "Accept-Encoding": "identity",
-      "Connection": "keep-alive",
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      Referer: 'https://www.terabox.com/',
+      Accept:
+        'video/webm,video/ogg,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'identity',
+      Connection: 'keep-alive',
     };
 
     // Forward Range header if present (for video seeking)
     if (rangeHeader) {
-      teraboxHeaders["Range"] = rangeHeader;
+      teraboxHeaders['Range'] = rangeHeader;
     }
 
-    console.log("[TeraBox Stream] 🌐 Fetching from TeraBox...");
+    console.log('[TeraBox Stream] 🌐 Fetching from TeraBox...');
 
     // Fetch from TeraBox
-    const response = await fetch(url, {
+    const response = await fetch(streamingUrl, {
       headers: teraboxHeaders,
-      redirect: "follow",
+      redirect: 'follow',
     });
 
-    console.log("[TeraBox Stream] 📡 TeraBox response status:", response.status);
+    console.log(
+      '[TeraBox Stream] 📡 TeraBox response status:',
+      response.status
+    );
 
     if (!response.ok) {
-      console.error("[TeraBox Stream] ❌ TeraBox error:", response.status, response.statusText);
-      throw new Error(`TeraBox responded with ${response.status}: ${response.statusText}`);
+      console.error(
+        '[TeraBox Stream] ❌ TeraBox error:',
+        response.status,
+        response.statusText
+      );
+      throw new Error(
+        `TeraBox responded with ${response.status}: ${response.statusText}`
+      );
     }
 
     // Get content type and length
-    const contentType = response.headers.get("Content-Type") || "video/mp4";
-    const contentLength = response.headers.get("Content-Length");
-    const acceptRanges = response.headers.get("Accept-Ranges") || "bytes";
+    const contentType = response.headers.get('Content-Type') || 'video/mp4';
+    const contentLength = response.headers.get('Content-Length');
+    const acceptRanges = response.headers.get('Accept-Ranges') || 'bytes';
 
     // Stream the response
     const responseHeaders: Record<string, string> = {
-      "Content-Type": contentType,
-      "Accept-Ranges": acceptRanges,
-      "Cache-Control": "public, max-age=3600",
+      'Content-Type': contentType,
+      'Accept-Ranges': acceptRanges,
+      'Cache-Control': 'public, max-age=3600',
     };
 
     // Handle range requests (for seeking)
     if (response.status === 206) {
       // Partial content
-      const contentRange = response.headers.get("Content-Range");
+      const contentRange = response.headers.get('Content-Range');
       if (contentRange) {
-        responseHeaders["Content-Range"] = contentRange;
+        responseHeaders['Content-Range'] = contentRange;
       }
       if (contentLength) {
-        responseHeaders["Content-Length"] = contentLength;
+        responseHeaders['Content-Length'] = contentLength;
       }
 
       return new NextResponse(response.body, {
@@ -83,7 +114,7 @@ export async function GET(req: NextRequest) {
 
     // Full content
     if (contentLength) {
-      responseHeaders["Content-Length"] = contentLength;
+      responseHeaders['Content-Length'] = contentLength;
     }
 
     return new NextResponse(response.body, {
@@ -91,9 +122,9 @@ export async function GET(req: NextRequest) {
       headers: responseHeaders,
     });
   } catch (error) {
-    console.error("[TeraBox Stream] Error:", error);
+    console.error('[TeraBox Stream] Error:', error);
     return NextResponse.json(
-      { error: "Failed to stream video" },
+      { error: 'Failed to stream video' },
       { status: 500 }
     );
   }

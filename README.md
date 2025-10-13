@@ -308,7 +308,8 @@ Videos can be downloaded, compressed, and re-uploaded to cloud storage (TeraBox 
 - **Upload button** next to Edit/Regen in each video card
 - **Queue system** with 10 concurrent workers
 - **Compression**: MP4 format with H.265 (HEVC) video codec + AAC audio (iPhone/Safari compatible, excellent quality/size ratio)
-- **Auto-update**: Supabase URL updated with new cloud URL after upload completes
+- **Smart URL storage**: Stores TeraBox file ID (permanent) instead of download links (temporary)
+- **On-demand streaming**: Fresh streaming links generated at playback time for reliability
 - **Progress UI**: Button shows real-time progress during processing
 - **Background processing**: [upload] tag in title indicates processing in background
 
@@ -317,13 +318,32 @@ Videos can be downloaded, compressed, and re-uploaded to cloud storage (TeraBox 
 1. **Queued**: Job added to processing queue (title shows [upload] tag)
 2. **Downloading**: Fetch original video from source URL
 3. **Compressing**: Convert to MP4 (H.265/HEVC + AAC) via ffmpeg
-4. **Uploading**: Upload to TeraBox cloud storage
-5. **Done**: Update Supabase with new URL and remove [upload] tag
-6. **Streaming**: Videos are proxied through `/api/terabox-stream` for seamless playback with seek support
+4. **Uploading**: Upload to TeraBox cloud storage and get file ID
+5. **Done**: Update Supabase with TeraBox file ID (`terabox://[fileId]`) and remove [upload] tag
+6. **Streaming**: On playback, `/api/terabox-stream?fileId=...` generates fresh streaming link with Range support for seeking
+
+### Why TeraBox File IDs instead of URLs?
+
+**Problem**: TeraBox download links are temporary and expire after some time, causing videos to break.
+
+**Solution**: Store permanent file IDs and generate fresh streaming links on-demand:
+
+- Upload returns file ID (e.g., `123456789`)
+- Supabase stores `terabox://123456789` format
+- On playback, client requests `/api/terabox-stream?fileId=123456789`
+- Server calls `getDownloadLink()` to get fresh temporary link
+- Video streams through our proxy with full Range/seek support
+
+**Benefits**:
+
+- ✅ Links never expire - file ID is permanent
+- ✅ Always get fresh, valid streaming URL
+- ✅ No need to update database when links expire
+- ✅ Cleaner separation of storage (ID) vs access (temporary link)
 
 ### TeraBox Integration
 
-**NEW**: Now using `terabox-upload-tool` npm package instead of browser automation!
+**NEW**: Now using `terabox-upload-tool` npm package for direct API access!
 
 #### Setup Required
 
