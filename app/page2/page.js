@@ -57,9 +57,7 @@ const Content = () => {
   useEffect(() => {
     const fetchVideos = async () => {
       try {
-        const response = await fetch(
-          "http://localhost:3000/api/fetch-file-list?folderName=/videos"
-        );
+        const response = await fetch("/api/fetch-file-list?folderName=/videos");
         const data = await response.json();
         setVideos(data);
       } catch (error) {
