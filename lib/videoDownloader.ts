@@ -1,40 +1,113 @@
 // Download video from URL to temp file
 import { join } from "path";
 import { tmpdir } from "os";
-import { createWriteStream } from "fs";
+import { createWriteStream, existsSync, statSync } from "fs";
 
 export async function downloadVideo(
   url: string,
   jobId: string,
   onProgress?: (percent: number, downloadedMB: number, totalMB: number) => void
 ): Promise<string> {
-  console.log(`[Downloader] 🌐 Starting download from: ${url}`);
+  const maxRetries = 3;
+  let lastError: Error | null = null;
 
-  const response = await fetch(url);
-  if (!response.ok) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(
+        `[Downloader] 🌐 Starting download (attempt ${attempt}/${maxRetries}) from: ${url}`
+      );
+      return await downloadWithResume(url, jobId, onProgress);
+    } catch (error) {
+      lastError = error as Error;
+      console.error(
+        `[Downloader] ❌ Attempt ${attempt}/${maxRetries} failed:`,
+        error
+      );
+
+      if (attempt < maxRetries) {
+        const waitTime = attempt * 2000; // 2s, 4s, 6s
+        console.log(`[Downloader] ⏳ Waiting ${waitTime}ms before retry...`);
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+      }
+    }
+  }
+
+  throw new Error(
+    `Download failed after ${maxRetries} attempts: ${lastError?.message}`
+  );
+}
+
+async function downloadWithResume(
+  url: string,
+  jobId: string,
+  onProgress?: (percent: number, downloadedMB: number, totalMB: number) => void
+): Promise<string> {
+  const tempPath = join(tmpdir(), `${jobId}_source.mp4`);
+
+  // Check if partial file exists
+  let startByte = 0;
+  if (existsSync(tempPath)) {
+    const stats = statSync(tempPath);
+    startByte = stats.size;
+    console.log(
+      `[Downloader] 📂 Resuming from ${(startByte / 1024 / 1024).toFixed(2)} MB`
+    );
+  }
+
+  const headers: HeadersInit = {};
+  if (startByte > 0) {
+    headers["Range"] = `bytes=${startByte}-`;
+  }
+
+  const response = await fetch(url, { headers });
+
+  // Accept both 200 (full) and 206 (partial) responses
+  if (!response.ok && response.status !== 206) {
+    let errorDetail = "";
+    try {
+      errorDetail = await response.text();
+    } catch {
+      // ignore
+    }
     console.error(
       `[Downloader] ❌ Download failed with status: ${response.status}`
     );
-    throw new Error(`Download failed: ${response.status}`);
+    console.error(`[Downloader] 🔗 URL: ${url}`);
+    console.error(
+      `[Downloader] 📄 Error detail: ${errorDetail.substring(0, 500)}`
+    );
+    throw new Error(
+      `Download failed: ${response.status} - ${errorDetail.substring(0, 100)}`
+    );
   }
 
   const contentLength = response.headers.get("content-length");
-  const totalSize = contentLength ? parseInt(contentLength) : 0;
+  const contentRange = response.headers.get("content-range");
+
+  let totalSize = 0;
+  if (contentRange) {
+    // Parse "bytes 1000-2000/3000" format
+    const match = contentRange.match(/\/(\d+)$/);
+    if (match) totalSize = parseInt(match[1]);
+  } else if (contentLength) {
+    totalSize = parseInt(contentLength);
+  }
+
   console.log(
     `[Downloader] 📦 File size: ${
       totalSize ? (totalSize / 1024 / 1024).toFixed(2) + " MB" : "unknown"
     }`
   );
 
-  const tempPath = join(tmpdir(), `${jobId}_source.mp4`);
-
   if (!response.body) {
     throw new Error("Response body is null");
   }
 
-  // Stream download with progress
-  const fileStream = createWriteStream(tempPath);
-  let downloaded = 0;
+  // Stream download with progress (append mode if resuming)
+  const fileStream = createWriteStream(tempPath, {
+    flags: startByte > 0 ? "a" : "w",
+  });
+  let downloaded = startByte;
   let lastLogTime = Date.now();
 
   const reader = response.body.getReader();

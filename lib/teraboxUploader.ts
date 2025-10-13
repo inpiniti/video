@@ -1,7 +1,7 @@
 // Upload compressed video to TeraBox and return public URL
 // Uses terabox-upload-tool library for direct API access
 
-import { basename } from 'path';
+import { basename } from "path";
 
 // TeraBox credentials interface
 interface TeraBoxCredentials {
@@ -22,16 +22,16 @@ export async function uploadToTeraBox(
   const credentials: TeraBoxCredentials | null = getCredentials();
 
   if (!credentials) {
-    console.warn('[TeraBox] No credentials found, using mock upload');
+    console.warn("[TeraBox] No credentials found, using mock upload");
     console.warn(
-      '[TeraBox] To enable real uploads, set these environment variables:'
+      "[TeraBox] To enable real uploads, set these environment variables:"
     );
     console.warn(
-      '[TeraBox]   TERABOX_NDUS, TERABOX_APP_ID, TERABOX_UPLOAD_ID,'
+      "[TeraBox]   TERABOX_NDUS, TERABOX_APP_ID, TERABOX_UPLOAD_ID,"
     );
-    console.warn('[TeraBox]   TERABOX_JS_TOKEN, TERABOX_BROWSER_ID');
+    console.warn("[TeraBox]   TERABOX_JS_TOKEN, TERABOX_BROWSER_ID");
     console.warn(
-      '[TeraBox] See setup guide: https://github.com/Pahadi10/terabox-upload-tool#guide'
+      "[TeraBox] See setup guide: https://github.com/Pahadi10/terabox-upload-tool#guide"
     );
     return mockUpload(videoId);
   }
@@ -41,49 +41,65 @@ export async function uploadToTeraBox(
 
   try {
     // Dynamic import to avoid loading heavy dependency upfront
-    const TeraboxUploader = (await import('terabox-upload-tool')).default;
+    const TeraboxUploader = (await import("terabox-upload-tool")).default;
 
     // Initialize uploader with credentials
     const uploader = new TeraboxUploader(credentials);
 
     // Upload file with progress tracking to /videos directory
-    console.log('[TeraBox] Uploading to /videos directory...');
+    console.log("[TeraBox] Uploading to /videos directory...");
 
     const result = await uploader.uploadFile(
       filePath,
       true, // showProgress
-      '/videos' // directory
+      "/videos" // directory
     );
 
     if (result.success) {
-      console.log('[TeraBox] ✅ Upload successful!');
-      console.log('[TeraBox] File details:', result.fileDetails);
+      console.log("[TeraBox] ✅ Upload successful!");
+      console.log("[TeraBox] File details:", result.fileDetails);
 
       // Get file ID - this is the permanent identifier
       const fileId = result.fileDetails?.fs_id;
 
       if (fileId) {
-        console.log('[TeraBox] ✅ File ID obtained:', fileId);
-        // Return TeraBox ID in a special format so client can detect it
-        // Format: terabox://[fileId]
-        return `terabox://${fileId}`;
+        console.log("[TeraBox] ✅ File ID obtained:", fileId);
+
+        // Test: Get streaming link immediately to verify it works
+        try {
+          const streamingLink = await getTeraBoxStreamingLink(
+            fileId.toString()
+          );
+          console.log(
+            "[TeraBox] ✅ Streaming link test successful:",
+            streamingLink
+          );
+        } catch (linkError) {
+          console.error(
+            "[TeraBox] ⚠️ Failed to get streaming link:",
+            linkError
+          );
+        }
+
+        // Return just the file ID (no prefix)
+        return fileId.toString();
       } else {
-        console.error('[TeraBox] ⚠️ No fileId in upload result');
-        throw new Error('Upload succeeded but no fileId returned');
+        console.error("[TeraBox] ⚠️ No fileId in upload result");
+        throw new Error("Upload succeeded but no fileId returned");
       }
     } else {
-      console.error('[TeraBox] Upload failed:', result.message);
-      throw new Error(result.message || 'Upload failed');
+      console.error("[TeraBox] Upload failed:", result.message);
+      throw new Error(result.message || "Upload failed");
     }
   } catch (error) {
-    console.error('[TeraBox] Upload error:', error);
-    console.error('[TeraBox] Error details:', {
-      name: error instanceof Error ? error.name : 'Unknown',
+    console.error("[TeraBox] Upload error:", error);
+    console.error("[TeraBox] Error details:", {
+      name: error instanceof Error ? error.name : "Unknown",
       message: error instanceof Error ? error.message : String(error),
     });
 
     // Fallback to mock for development
-    console.warn('[TeraBox] Falling back to mock upload');
+    console.warn("[TeraBox] Falling back to mock upload");
     return mockUpload(videoId);
   }
 }
@@ -94,13 +110,13 @@ export async function getTeraBoxStreamingLink(fileId: string): Promise<string> {
   const credentials = getCredentials();
 
   if (!credentials) {
-    throw new Error('TeraBox credentials not configured');
+    throw new Error("TeraBox credentials not configured");
   }
 
   try {
     // Use internal helper to get fresh download/streaming link
     const { default: getDownloadLink } = await import(
-      'terabox-upload-tool/lib/helpers/download/download'
+      "terabox-upload-tool/lib/helpers/download/download"
     );
 
     const downloadResult = await getDownloadLink(
@@ -109,13 +125,13 @@ export async function getTeraBoxStreamingLink(fileId: string): Promise<string> {
     );
 
     console.log(
-      '[TeraBox] getDownloadLink response:',
+      "[TeraBox] getDownloadLink response:",
       JSON.stringify(downloadResult, null, 2)
     );
 
     if (downloadResult.success && downloadResult.downloadLink) {
       console.log(
-        '[TeraBox] ✅ Fresh streaming link obtained:',
+        "[TeraBox] ✅ Fresh streaming link obtained:",
         downloadResult.downloadLink
       );
       return downloadResult.downloadLink;
@@ -123,7 +139,7 @@ export async function getTeraBoxStreamingLink(fileId: string): Promise<string> {
       throw new Error(`Failed to get download link: ${downloadResult.message}`);
     }
   } catch (error) {
-    console.error('[TeraBox] Failed to get streaming link:', error);
+    console.error("[TeraBox] Failed to get streaming link:", error);
     throw error;
   }
 }
@@ -146,8 +162,8 @@ function getCredentials(): TeraBoxCredentials | null {
 async function mockUpload(videoId: number): Promise<string> {
   console.log(`[TeraBox] Using mock upload for video ${videoId}`);
   await new Promise((resolve) => setTimeout(resolve, 2000));
-  // Return mock TeraBox ID format
-  return `terabox://mock_${videoId}_${Date.now()}`;
+  // Return mock file ID (just numbers, no prefix)
+  return `mock_${videoId}_${Date.now()}`;
 }
 
 // Alternative: Use official cloud storage APIs

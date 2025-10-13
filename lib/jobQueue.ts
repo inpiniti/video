@@ -193,7 +193,7 @@ async function processJob(job: Job) {
     console.log(`[Job ${job.id}] ✅ Loaded uploader module`);
 
     const teraboxUrl = await uploadToTeraBox(compressedPath, job.videoId);
-    console.log(`[Job ${job.id}] ✅ Uploaded! URL: ${teraboxUrl}`);
+    console.log(`[Job ${job.id}] ✅ Uploaded! TeraBox File ID: ${teraboxUrl}`);
 
     // 4. Update Supabase with new URL and remove [upload] tag
     console.log(`[Job ${job.id}] 💾 Step 4/4: Updating Supabase...`);
