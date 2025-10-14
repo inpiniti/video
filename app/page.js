@@ -81,10 +81,12 @@ const Content = () => {
   }, []);
 
   return (
-    <div className="pt-16">
-      {videos.map((video) => (
-        <Item key={video.fs_id} video={video} />
-      ))}
+    <div className="pt-16 sm:px-2 mx-auto">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+        {videos.map((video) => (
+          <Item key={video.fs_id} video={video} />
+        ))}
+      </div>
     </div>
   );
 };
@@ -176,9 +178,9 @@ const Item = ({ video }) => {
   };
 
   return (
-    <div ref={itemRef} className="border-b pb-4">
+    <div ref={itemRef}>
       <div
-        className="relative w-full cursor-pointer"
+        className="relative w-full cursor-pointer aspect-square"
         onClick={handleImageClick}
       >
         {/* 썸네일 이미지 - 항상 표시하고 비디오 로딩 중에도 보임 */}
@@ -203,7 +205,6 @@ const Item = ({ video }) => {
             ref={videoRef}
             className="w-full block"
             style={{
-              aspectRatio: "auto",
               display: videoLoaded ? "block" : "none",
             }}
             autoPlay
@@ -230,15 +231,17 @@ const Item = ({ video }) => {
           </video>
         )}
       </div>
-      <div className="flex gap-2 p-2 items-center">
+      <div className="flex gap-2 p-2 items-start">
         <img
           src={video.thumbs.icon}
           alt="TeraBox"
-          className="w-12 h-12 rounded-2xl object-cover"
+          className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
         />
-        <div className="flex flex-col">
-          <span className="font-bold">{video.fs_id}</span>
-          <span>{video.server_filename}</span>
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="font-medium text-sm truncate">
+            {video.server_filename}
+          </span>
+          <span className="text-xs text-gray-500 truncate">{video.fs_id}</span>
         </div>
       </div>
     </div>
