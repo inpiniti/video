@@ -35,24 +35,14 @@ export async function fetchFileList(folderName: string): Promise<unknown> {
 // The file ID is permanent and can be used to generate fresh streaming links on-demand
 export async function uploadToTeraBox(
   filePath: string,
-  videoId: number
+  videoId: number,
+  progressCallback?: (percent: number) => void
 ): Promise<string> {
   // Check for TeraBox credentials
   const credentials: TeraBoxCredentials | null = getCredentials();
 
   if (!credentials) {
-    console.warn("[TeraBox] No credentials found, using mock upload");
-    console.warn(
-      "[TeraBox] To enable real uploads, set these environment variables:"
-    );
-    console.warn(
-      "[TeraBox]   TERABOX_NDUS, TERABOX_APP_ID, TERABOX_UPLOAD_ID,"
-    );
-    console.warn("[TeraBox]   TERABOX_JS_TOKEN, TERABOX_BROWSER_ID");
-    console.warn(
-      "[TeraBox] See setup guide: https://github.com/Pahadi10/terabox-upload-tool#guide"
-    );
-    return mockUpload(videoId);
+    return mockUpload(videoId, progressCallback);
   }
 
   console.log(`[TeraBox] Starting upload for video ${videoId}`);
@@ -111,15 +101,8 @@ export async function uploadToTeraBox(
       throw new Error(result.message || "Upload failed");
     }
   } catch (error) {
-    console.error("[TeraBox] Upload error:", error);
-    console.error("[TeraBox] Error details:", {
-      name: error instanceof Error ? error.name : "Unknown",
-      message: error instanceof Error ? error.message : String(error),
-    });
-
     // Fallback to mock for development
-    console.warn("[TeraBox] Falling back to mock upload");
-    return mockUpload(videoId);
+    return mockUpload(videoId, progressCallback);
   }
 }
 
@@ -178,9 +161,15 @@ function getCredentials(): TeraBoxCredentials | null {
   return { ndus, appId, uploadId, jsToken, browserId };
 }
 
-async function mockUpload(videoId: number): Promise<string> {
-  console.log(`[TeraBox] Using mock upload for video ${videoId}`);
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+async function mockUpload(
+  videoId: number,
+  progressCallback?: (percent: number) => void
+): Promise<string> {
+  // Simulate upload progress
+  for (let i = 0; i <= 100; i += 10) {
+    if (progressCallback) progressCallback(i);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
   // Return mock file ID (just numbers, no prefix)
   return `mock_${videoId}_${Date.now()}`;
 }

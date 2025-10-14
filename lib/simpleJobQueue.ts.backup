@@ -1,0 +1,289 @@
+// Simplified job queue for video upload pipeline (no Supabase)
+// Each job: download → compress → upload to TeraBox
+// Only ONE job processes at a time (downloading, compressing, or uploading)
+
+export type SimpleJobStatus =
+  | 'queued'
+  | 'downloading'
+  | 'compressing'
+  | 'uploading'
+  | 'done'
+  | 'error';
+
+export interface SimpleJobProgress {
+  percentage: number; // 0-100
+  sizeMB?: number; // Current size
+  totalMB?: number; // Total size (for downloads)
+  message?: string; // Current activity message
+}
+
+export interface SimpleJob {
+  id: string;
+  sourceUrl: string;
+  status: SimpleJobStatus;
+  progress?: SimpleJobProgress;
+  teraboxFileId?: string; // Result: terabox://[fileId]
+  error?: string;
+  createdAt: number;
+  startedAt?: number;
+  completedAt?: number;
+}
+
+const jobs = new Map<string, SimpleJob>();
+const queue: string[] = [];
+let isProcessing = false;
+let statusInterval: NodeJS.Timeout | null = null;
+
+export function enqueueSimpleJob(sourceUrl: string): string {
+  const id = `sjob_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const job: SimpleJob = {
+    id,
+    sourceUrl,
+    status: 'queued',
+    createdAt: Date.now(),
+  };
+  jobs.set(id, job);
+  queue.push(id);
+
+  startStatusLogger();
+  processQueue();
+  return id;
+}
+
+export function getAllSimpleJobs(): SimpleJob[] {
+  return Array.from(jobs.values()).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function getQueueStatus() {
+  const allJobs = getAllSimpleJobs();
+  const queued = allJobs.filter((j) => j.status === 'queued');
+  const downloading = allJobs.filter((j) => j.status === 'downloading');
+  const compressing = allJobs.filter((j) => j.status === 'compressing');
+  const uploading = allJobs.filter((j) => j.status === 'uploading');
+  const done = allJobs.filter((j) => j.status === 'done');
+  const error = allJobs.filter((j) => j.status === 'error');
+
+  return {
+    queued: queued.length,
+    downloading: downloading[0] || null,
+    compressing: compressing[0] || null,
+    uploading: uploading[0] || null,
+    done: done.length,
+    error: error.length,
+    total: allJobs.length,
+  };
+}
+
+function startStatusLogger() {
+  if (statusInterval) return;
+  
+  statusInterval = setInterval(() => {
+    const status = getQueueStatus();
+    
+    // Clear console and print status
+    process.stdout.write('\x1Bc'); // Clear console
+    console.log('📊 작업 상태');
+    console.log('─'.repeat(40));
+    console.log(`대기: ${status.queued}`);
+    
+    if (status.downloading) {
+      const prog = status.downloading.progress;
+      const percent = prog ? `${prog.percentage.toFixed(0)}%` : '0%';
+      console.log(`다운로드: ${percent}`);
+    } else {
+      console.log(`다운로드: -`);
+    }
+    
+    if (status.compressing) {
+      const prog = status.compressing.progress;
+      const percent = prog ? `${prog.percentage.toFixed(0)}%` : '0%';
+      console.log(`압축: ${percent}`);
+    } else {
+      console.log(`압축: -`);
+    }
+    
+    if (status.uploading) {
+      const prog = status.uploading.progress;
+      const percent = prog ? `${prog.percentage.toFixed(0)}%` : '0%';
+      console.log(`업로드: ${percent}`);
+    } else {
+      console.log(`업로드: -`);
+    }
+    
+    console.log('─'.repeat(40));
+    console.log(`✅ 완료: ${status.done}  ❌ 실패: ${status.error}`);
+    
+    // Stop if no active jobs
+    if (!status.downloading && !status.compressing && !status.uploading && status.queued === 0) {
+      stopStatusLogger();
+    }
+  }, 1000);
+}
+
+function stopStatusLogger() {
+  if (statusInterval) {
+    clearInterval(statusInterval);
+    statusInterval = null;
+  }
+}
+
+// Update job progress and log status
+export function updateSimpleJobProgress(
+  jobId: string,
+  progress: SimpleJobProgress
+) {
+  const job = jobs.get(jobId);
+  if (job) {
+    job.progress = progress;
+    // Log every 5% progress or status change
+    if (
+      !job.progress ||
+      Math.abs(progress.percentage - (job.progress?.percentage || 0)) >= 5
+    ) {
+      logQueueStatus();
+    }
+  }
+}
+
+async function processQueue() {
+  if (isProcessing || queue.length === 0) {
+    return;
+  }
+
+  const jobId = queue.shift();
+  if (!jobId) return;
+
+  const job = jobs.get(jobId);
+  if (!job) {
+    console.error(`[Queue] ❌ Job ${jobId} not found`);
+    return;
+  }
+
+  isProcessing = true;
+  console.log(`\n🚀 [Queue] Starting job: ${jobId}`);
+  console.log(`📋 [Queue] Source URL: ${job.sourceUrl}`);
+
+  try {
+    await processSimpleJob(job);
+    console.log(`✅ [Queue] Job ${jobId} completed successfully`);
+  } catch (e) {
+    console.error(`❌ [Queue] Job ${jobId} failed:`, e);
+    job.status = 'error';
+    job.error = String(e);
+    job.completedAt = Date.now();
+  } finally {
+    isProcessing = false;
+    logQueueStatus();
+
+    if (queue.length > 0) {
+      console.log(
+        `⏭️  [Queue] ${queue.length} jobs remaining, processing next...`
+      );
+      processQueue(); // Process next job
+    } else {
+      console.log(`💤 [Queue] All jobs completed, queue is empty`);
+    }
+  }
+}
+
+async function processSimpleJob(job: SimpleJob) {
+  job.startedAt = Date.now();
+
+  try {
+    // 1. Download
+    console.log(`\n⬇️  [Job ${job.id}] Step 1/3: Downloading video...`);
+    job.status = 'downloading';
+    job.progress = { percentage: 0, message: '다운로드 시작...' };
+    logQueueStatus();
+
+    const { downloadVideo } = await import('./videoDownloader');
+    const downloadPath = await downloadVideo(
+      job.sourceUrl,
+      job.id,
+      (percent, downloadedMB, totalMB) => {
+        updateSimpleJobProgress(job.id, {
+          percentage: percent,
+          sizeMB: downloadedMB,
+          totalMB,
+          message: `다운로드: ${percent.toFixed(1)}%`,
+        });
+      }
+    );
+    console.log(`✅ [Job ${job.id}] Downloaded to: ${downloadPath}`);
+
+    // 2. Compress
+    console.log(`\n🔄 [Job ${job.id}] Step 2/3: Compressing video...`);
+    job.status = 'compressing';
+    job.progress = { percentage: 0, message: '압축 시작...' };
+    logQueueStatus();
+
+    const { compressVideo } = await import('./videoCompressor');
+    const compressedPath = await compressVideo(
+      downloadPath,
+      job.id,
+      async (percent) => {
+        // Get file size if file exists
+        try {
+          const fs = await import('fs');
+          const stats = fs.statSync(compressedPath);
+          const sizeMB = stats.size / (1024 * 1024);
+
+          updateSimpleJobProgress(job.id, {
+            percentage: percent,
+            sizeMB,
+            message: `압축: ${percent.toFixed(1)}%`,
+          });
+        } catch {
+          // File may not exist yet
+          updateSimpleJobProgress(job.id, {
+            percentage: percent,
+            message: `압축: ${percent.toFixed(1)}%`,
+          });
+        }
+      }
+    );
+    console.log(`✅ [Job ${job.id}] Compressed to: ${compressedPath}`);
+
+    // 3. Upload to TeraBox
+    console.log(`\n⬆️  [Job ${job.id}] Step 3/3: Uploading to TeraBox...`);
+    job.status = 'uploading';
+    job.progress = { percentage: 0, message: '업로드 시작...' };
+    logQueueStatus();
+
+    const { uploadToTeraBox } = await import('./teraboxUploader');
+    // Use a dummy videoId since we don't have Supabase ID
+    const dummyId = Date.now();
+    const teraboxFileId = await uploadToTeraBox(compressedPath, dummyId);
+    console.log(
+      `✅ [Job ${job.id}] Uploaded! TeraBox File ID: ${teraboxFileId}`
+    );
+
+    // Done
+    job.status = 'done';
+    job.teraboxFileId = teraboxFileId;
+    job.progress = { percentage: 100, message: '완료!' };
+    job.completedAt = Date.now();
+    logQueueStatus();
+
+    // Cleanup temp files
+    console.log(`🧹 [Job ${job.id}] Cleaning up temp files...`);
+    const fs = await import('fs/promises');
+    await fs.unlink(downloadPath).catch(() => {});
+    await fs.unlink(compressedPath).catch(() => {});
+    console.log(`✅ [Job ${job.id}] Cleanup done`);
+
+    const duration = ((job.completedAt - job.startedAt!) / 1000 / 60).toFixed(
+      1
+    );
+    console.log(
+      `\n🎉 [Job ${job.id}] All steps completed in ${duration} minutes!`
+    );
+    console.log(`📦 [Job ${job.id}] TeraBox File ID: ${teraboxFileId}`);
+  } catch (e) {
+    console.error(`❌ [Job ${job.id}] Error during processing:`, e);
+    job.status = 'error';
+    job.error = String(e);
+    job.completedAt = Date.now();
+    throw e;
+  }
+}
