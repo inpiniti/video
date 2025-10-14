@@ -89,15 +89,20 @@ const Content = () => {
 };
 
 const Item = ({ video }) => {
-  const [showVideo, setShowVideo] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [streamingUrl, setStreamingUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [videoLoaded, setVideoLoaded] = useState(false);
   const itemRef = useRef(null);
   const videoRef = useRef(null);
 
   const loadAndPlayVideo = useCallback(async () => {
     if (streamingUrl) {
-      setShowVideo(true);
+      // 이미 로드된 경우 재생만
+      if (videoRef.current) {
+        videoRef.current.play();
+        setIsPlaying(true);
+      }
       return;
     }
 
@@ -105,10 +110,9 @@ const Item = ({ video }) => {
     try {
       const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
       setStreamingUrl(proxyUrl);
-      setShowVideo(true);
+      // 비디오가 로드되면 자동 재생
     } catch (error) {
       console.error('Error setting up streaming:', error);
-    } finally {
       setIsLoading(false);
     }
   }, [streamingUrl, video.fs_id]);
@@ -119,16 +123,20 @@ const Item = ({ video }) => {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        // 화면에 보이면 자동 재생
-        if (entry.isIntersecting && !showVideo && !streamingUrl) {
+        // 화면에 보이면 자동 로드 및 재생
+        if (entry.isIntersecting && !streamingUrl) {
           loadAndPlayVideo();
         }
 
         // 화면에서 벗어나면 비디오 일시정지
         if (!entry.isIntersecting && videoRef.current) {
           videoRef.current.pause();
-        } else if (entry.isIntersecting && videoRef.current && showVideo) {
-          videoRef.current.play();
+          setIsPlaying(false);
+        } else if (entry.isIntersecting && videoRef.current && streamingUrl) {
+          videoRef.current.play().catch(() => {
+            // 자동 재생 실패 시 무시 (브라우저 정책)
+          });
+          setIsPlaying(true);
         }
       },
       {
@@ -145,14 +153,25 @@ const Item = ({ video }) => {
         observer.unobserve(currentRef);
       }
     };
-  }, [showVideo, streamingUrl, loadAndPlayVideo]);
+  }, [streamingUrl, loadAndPlayVideo]);
 
   const handleImageClick = async () => {
-    if (showVideo) {
-      setShowVideo(false);
+    if (!videoRef.current) return;
+
+    // 비디오가 로드되지 않았으면 로드 시작
+    if (!streamingUrl) {
+      loadAndPlayVideo();
       return;
     }
-    loadAndPlayVideo();
+
+    // 일시정지/재생 토글
+    if (videoRef.current.paused) {
+      videoRef.current.play();
+      setIsPlaying(true);
+    } else {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    }
   };
 
   return (
@@ -161,37 +180,57 @@ const Item = ({ video }) => {
         className="relative w-full cursor-pointer"
         onClick={handleImageClick}
       >
-        {!showVideo ? (
-          <>
-            <img
-              className="w-full block"
-              src={video.thumbs.url3}
-              alt="thumbnail"
-            />
-            {isLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
-                <div className="text-white">Loading...</div>
-              </div>
-            )}
-            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-20 opacity-0 hover:opacity-100 transition-all">
-              <div className="text-white text-4xl drop-shadow-lg">▶</div>
-            </div>
-          </>
-        ) : (
+        {/* 썸네일 이미지 - 항상 표시하고 비디오 로딩 중에도 보임 */}
+        {(!streamingUrl || isLoading || !videoLoaded) && (
+          <img
+            className="w-full block"
+            src={video.thumbs.url3}
+            alt="thumbnail"
+          />
+        )}
+
+        {/* 로딩 인디케이터 */}
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="text-white">Loading...</div>
+          </div>
+        )}
+
+        {/* 재생 버튼 오버레이 (썸네일 위) */}
+        {!streamingUrl && !isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-20 opacity-0 hover:opacity-100 transition-all">
+            <div className="text-white text-4xl drop-shadow-lg">▶</div>
+          </div>
+        )}
+
+        {/* 비디오 엘리먼트 - 항상 렌더링하되, 로드 전까지는 숨김 */}
+        {streamingUrl && (
           <video
             ref={videoRef}
             className="w-full block"
-            style={{ aspectRatio: 'auto' }}
+            style={{
+              aspectRatio: 'auto',
+              display: videoLoaded ? 'block' : 'none',
+            }}
             controls
             autoPlay
             playsInline
             loop
             muted
+            preload="auto"
             src={streamingUrl}
+            onLoadedData={() => {
+              setVideoLoaded(true);
+              setIsLoading(false);
+              setIsPlaying(true);
+            }}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
             onError={(e) => {
               console.error('Video playback error:', e);
-              setShowVideo(false);
+              setIsLoading(false);
               setStreamingUrl(null);
+              setVideoLoaded(false);
             }}
           >
             Your browser does not support the video tag.
