@@ -102,8 +102,13 @@ const Item = ({ video }) => {
   const [streamingUrl, setStreamingUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const itemRef = useRef(null);
   const videoRef = useRef(null);
+  const clickCountRef = useRef(0);
+  const clickTimerRef = useRef(null);
+  const lastTapRef = useRef(0);
 
   const loadAndPlayVideo = useCallback(async () => {
     if (streamingUrl) {
@@ -164,7 +169,19 @@ const Item = ({ video }) => {
     };
   }, [streamingUrl, loadAndPlayVideo]);
 
-  const handleImageClick = async () => {
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
+  const handleVideoClick = async (e) => {
     if (!videoRef.current) return;
 
     // 비디오가 로드되지 않았으면 로드 시작
@@ -173,13 +190,62 @@ const Item = ({ video }) => {
       return;
     }
 
-    // 일시정지/재생 토글
-    if (videoRef.current.paused) {
-      videoRef.current.play();
-      setIsPlaying(true);
-    } else {
-      videoRef.current.pause();
-      setIsPlaying(false);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const width = rect.width;
+    const clickPosition = x / width; // 0 (left) to 1 (right)
+
+    // 클릭 카운트 증가
+    clickCountRef.current += 1;
+
+    // Clear previous timer
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+    }
+
+    // Wait 300ms to detect multiple clicks
+    clickTimerRef.current = setTimeout(() => {
+      const clickCount = clickCountRef.current;
+      clickCountRef.current = 0; // Reset
+
+      if (clickCount === 1) {
+        // Single click: seek forward/backward 5 seconds
+        if (clickPosition < 0.5) {
+          // Left side: -5 seconds
+          videoRef.current.currentTime = Math.max(
+            0,
+            videoRef.current.currentTime - 5
+          );
+        } else {
+          // Right side: +5 seconds
+          videoRef.current.currentTime = Math.min(
+            videoRef.current.duration,
+            videoRef.current.currentTime + 5
+          );
+        }
+      } else if (clickCount === 2) {
+        // Double click: toggle playback rate (1x <-> 2x)
+        const newRate = videoRef.current.playbackRate === 1 ? 2 : 1;
+        videoRef.current.playbackRate = newRate;
+        setPlaybackRate(newRate);
+      } else if (clickCount >= 3) {
+        // Triple click: toggle fullscreen
+        if (!document.fullscreenElement) {
+          videoRef.current.requestFullscreen().catch((err) => {
+            console.error("Fullscreen error:", err);
+          });
+          setIsFullscreen(true);
+        } else {
+          document.exitFullscreen();
+          setIsFullscreen(false);
+        }
+      }
+    }, 300);
+  };
+
+  const handleImageClick = async () => {
+    if (!streamingUrl) {
+      loadAndPlayVideo();
     }
   };
 
@@ -219,6 +285,7 @@ const Item = ({ video }) => {
             muted
             preload="auto"
             src={streamingUrl}
+            onClick={handleVideoClick}
             onLoadedData={() => {
               setVideoLoaded(true);
               setIsLoading(false);
