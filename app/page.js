@@ -1,8 +1,9 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 
 const Page = () => {
   return (
@@ -33,18 +34,18 @@ const Header = () => {
       setLastScrollY(currentScrollY);
     };
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, [lastScrollY]);
 
   const handleAddClick = () => {
-    router.push('/add');
+    router.push("/add");
   };
 
   return (
     <div
       className={`fixed top-0 w-full h-16 flex items-center justify-between px-4 transition-transform duration-300 ease-in-out z-50 ${
-        isVisible ? 'translate-y-0' : '-translate-y-full'
+        isVisible ? "translate-y-0" : "-translate-y-full"
       }`}
     >
       <div></div>
@@ -68,11 +69,11 @@ const Content = () => {
   useEffect(() => {
     const fetchVideos = async () => {
       try {
-        const response = await fetch('/api/fetch-file-list?folderName=/videos');
+        const response = await fetch("/api/fetch-file-list?folderName=/videos");
         const data = await response.json();
         setVideos(data);
       } catch (error) {
-        console.error('Failed to fetch videos:', error);
+        console.error("Failed to fetch videos:", error);
       }
     };
 
@@ -112,7 +113,7 @@ const Item = ({ video }) => {
       setStreamingUrl(proxyUrl);
       // 비디오가 로드되면 자동 재생
     } catch (error) {
-      console.error('Error setting up streaming:', error);
+      console.error("Error setting up streaming:", error);
       setIsLoading(false);
     }
   }, [streamingUrl, video.fs_id]);
@@ -191,15 +192,8 @@ const Item = ({ video }) => {
 
         {/* 로딩 인디케이터 */}
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="text-white">Loading...</div>
-          </div>
-        )}
-
-        {/* 재생 버튼 오버레이 (썸네일 위) */}
-        {!streamingUrl && !isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-20 opacity-0 hover:opacity-100 transition-all">
-            <div className="text-white text-4xl drop-shadow-lg">▶</div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Spinner className="w-12 h-12 text-white" />
           </div>
         )}
 
@@ -209,8 +203,8 @@ const Item = ({ video }) => {
             ref={videoRef}
             className="w-full block"
             style={{
-              aspectRatio: 'auto',
-              display: videoLoaded ? 'block' : 'none',
+              aspectRatio: "auto",
+              display: videoLoaded ? "block" : "none",
             }}
             controls
             autoPlay
@@ -227,7 +221,7 @@ const Item = ({ video }) => {
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
             onError={(e) => {
-              console.error('Video playback error:', e);
+              console.error("Video playback error:", e);
               setIsLoading(false);
               setStreamingUrl(null);
               setVideoLoaded(false);
