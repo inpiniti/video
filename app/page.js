@@ -6,17 +6,37 @@ import { Plus } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 
 const Page = () => {
+  const [videos, setVideos] = useState([]);
+
+  useEffect(() => {
+    const fetchVideos = async () => {
+      try {
+        const response = await fetch("/api/fetch-file-list?folderName=/videos");
+        const data = await response.json();
+        setVideos(data);
+      } catch (error) {
+        console.error("Failed to fetch videos:", error);
+      }
+    };
+
+    fetchVideos();
+  }, []);
+
+  // Calculate total size in GB
+  const totalSizeGB =
+    videos.reduce((sum, video) => sum + (video.size || 0), 0) / 1024 ** 3;
+
   return (
     <div className="w-screen h-screen">
-      <Header />
-      <Content />
+      <Header totalSizeGB={totalSizeGB} />
+      <Content videos={videos} />
     </div>
   );
 };
 
 export default Page;
 
-const Header = () => {
+const Header = ({ totalSizeGB }) => {
   const router = useRouter();
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
@@ -44,11 +64,13 @@ const Header = () => {
 
   return (
     <div
-      className={`fixed top-0 w-full h-16 flex items-center justify-between px-4 transition-transform duration-300 ease-in-out z-50 ${
+      className={`fixed top-0 w-full h-16 flex items-center justify-between px-4 transition-transform duration-300 ease-in-out z-50 bg-white bg-opacity-95 backdrop-blur-sm ${
         isVisible ? "translate-y-0" : "-translate-y-full"
       }`}
     >
-      <div></div>
+      <div className="text-sm font-medium text-gray-700">
+        {totalSizeGB.toFixed(2)} GB / 1 TB
+      </div>
       <div className="text-2xl font-bold absolute left-1/2 transform -translate-x-1/2">
         Instagram
       </div>
@@ -63,23 +85,7 @@ const Header = () => {
   );
 };
 
-const Content = () => {
-  const [videos, setVideos] = useState([]);
-
-  useEffect(() => {
-    const fetchVideos = async () => {
-      try {
-        const response = await fetch("/api/fetch-file-list?folderName=/videos");
-        const data = await response.json();
-        setVideos(data);
-      } catch (error) {
-        console.error("Failed to fetch videos:", error);
-      }
-    };
-
-    fetchVideos();
-  }, []);
-
+const Content = ({ videos }) => {
   return (
     <div className="pt-16 sm:px-2 mx-auto">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
@@ -241,7 +247,15 @@ const Item = ({ video }) => {
           <span className="font-medium text-sm truncate">
             {video.server_filename}
           </span>
-          <span className="text-xs text-gray-500 truncate">{video.fs_id}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 truncate">
+              {video.fs_id}
+            </span>
+            <span className="text-xs text-gray-400">•</span>
+            <span className="text-xs text-gray-500 flex-shrink-0">
+              {((video.size || 0) / 1024 ** 2).toFixed(2)} MB
+            </span>
+          </div>
         </div>
       </div>
     </div>
