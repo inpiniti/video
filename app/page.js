@@ -230,9 +230,16 @@ const Item = ({ video }) => {
           </video>
         )}
       </div>
-      <div className="flex flex-col p-2">
-        <span className="font-bold">{video.fs_id}</span>
-        <span>{video.server_filename}</span>
+      <div className="flex gap-2 p-2 items-center">
+        <img
+          src={video.thumbs.icon}
+          alt="TeraBox"
+          className="w-12 h-12 rounded-2xl object-cover"
+        />
+        <div className="flex flex-col">
+          <span className="font-bold">{video.fs_id}</span>
+          <span>{video.server_filename}</span>
+        </div>
       </div>
     </div>
   );
