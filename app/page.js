@@ -206,7 +206,6 @@ const Item = ({ video }) => {
               aspectRatio: "auto",
               display: videoLoaded ? "block" : "none",
             }}
-            controls
             autoPlay
             playsInline
             loop
