@@ -20,6 +20,7 @@ export interface SimpleJobProgress {
 export interface SimpleJob {
   id: string;
   sourceUrl: string;
+  sourceFile?: string; // NEW: path to uploaded file (skips download)
   status: SimpleJobStatus;
   progress?: SimpleJobProgress;
   teraboxFileId?: string; // Result: terabox://[fileId]
@@ -41,14 +42,24 @@ let currentlyDownloading: string | null = null;
 let currentlyCompressing: string | null = null;
 let currentlyUploading: string | null = null;
 
-export function enqueueSimpleJob(sourceUrl: string): string {
+export function enqueueSimpleJob(
+  sourceUrl: string,
+  sourceFile?: string
+): string {
   const id = `sjob_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   const job: SimpleJob = {
     id,
     sourceUrl,
-    status: "queued",
+    sourceFile,
+    status: sourceFile ? "compressing" : "queued", // Skip download if file provided
     createdAt: Date.now(),
   };
+
+  // If file provided, set downloadPath to sourceFile so compress stage can use it
+  if (sourceFile) {
+    job.downloadPath = sourceFile;
+  }
+
   jobs.set(id, job);
   queue.push(id);
 

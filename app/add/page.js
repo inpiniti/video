@@ -100,9 +100,7 @@ const Content = () => {
 
       // Show success message
       alert(data.message || "업로드 중입니다...");
-
-      // Navigate back to main page
-      router.push("/");
+      setLink("");
     } catch (error) {
       console.error("Upload error:", error);
       alert(`업로드 실패: ${error.message}`);
@@ -146,8 +144,31 @@ const Content = () => {
       return;
     }
 
-    alert("파일 업로드 기능은 준비 중입니다.");
-    // TODO: Implement file upload logic
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      const response = await fetch("/api/simple-upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "업로드 요청 실패");
+      }
+
+      // Show success message
+      alert(data.message || "업로드 중입니다...");
+      setSelectedFile(null);
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert(`업로드 실패: ${error.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -235,18 +256,16 @@ const Content = () => {
               </label>
             </div>
 
-            {selectedFile && (
-              <button
-                onClick={handleFileUpload}
-                disabled={isSubmitting}
-                className="w-full mt-4 py-3 bg-black text-white rounded-lg hover:bg-opacity-80 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? "업로드 중..." : "업로드"}
-              </button>
-            )}
+            <button
+              onClick={handleFileUpload}
+              disabled={isSubmitting || !selectedFile}
+              className="w-full mt-4 py-3 bg-black text-white rounded-lg hover:bg-opacity-80 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? "등록 중..." : "등록"}
+            </button>
 
             <p className="text-sm text-gray-500 mt-4 text-center">
-              파일 업로드 기능은 준비 중입니다.
+              등록 후 압축, 업로드가 백그라운드에서 진행됩니다.
             </p>
           </TabsContent>
         </Tabs>
