@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { Plus } from 'lucide-react';
-import activeVideo from '@/lib/activeVideo';
-import { Spinner } from '@/components/ui/spinner';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
+import activeVideo from "@/lib/activeVideo";
+import { Spinner } from "@/components/ui/spinner";
 
 const Page = () => {
   const [videos, setVideos] = useState([]);
@@ -12,11 +12,11 @@ const Page = () => {
   useEffect(() => {
     const fetchVideos = async () => {
       try {
-        const response = await fetch('/api/fetch-file-list?folderName=/videos');
+        const response = await fetch("/api/fetch-file-list?folderName=/videos");
         const data = await response.json();
         setVideos(data);
       } catch (error) {
-        console.error('Failed to fetch videos:', error);
+        console.error("Failed to fetch videos:", error);
       }
     };
 
@@ -55,18 +55,18 @@ const Header = ({ totalSizeGB }) => {
       setLastScrollY(currentScrollY);
     };
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, [lastScrollY]);
 
   const handleAddClick = () => {
-    router.push('/add');
+    router.push("/add");
   };
 
   return (
     <div
       className={`fixed top-0 w-full h-16 flex items-center justify-between px-4 transition-transform duration-300 ease-in-out z-50 bg-white bg-opacity-95 backdrop-blur-sm ${
-        isVisible ? 'translate-y-0' : '-translate-y-full'
+        isVisible ? "translate-y-0" : "-translate-y-full"
       }`}
     >
       <div className="text-sm font-medium text-gray-700">
@@ -135,7 +135,7 @@ const Item = ({ video }) => {
           if (videoRef.current) {
             try {
               videoRef.current.pause();
-              videoRef.current.removeAttribute('src');
+              videoRef.current.removeAttribute("src");
               videoRef.current.load();
             } catch {
               // ignore
@@ -196,9 +196,9 @@ const Item = ({ video }) => {
       setIsFullscreen(!!document.fullscreenElement);
     };
 
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
   }, []);
 
@@ -253,7 +253,7 @@ const Item = ({ video }) => {
         // Triple click: toggle fullscreen
         if (!document.fullscreenElement) {
           videoRef.current.requestFullscreen().catch((err) => {
-            console.error('Fullscreen error:', err);
+            console.error("Fullscreen error:", err);
           });
           setIsFullscreen(true);
         } else {
@@ -298,7 +298,7 @@ const Item = ({ video }) => {
             ref={videoRef}
             className="w-full block"
             style={{
-              display: videoLoaded ? 'block' : 'none',
+              display: videoLoaded ? "block" : "none",
             }}
             autoPlay
             playsInline
@@ -315,7 +315,7 @@ const Item = ({ video }) => {
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
             onError={(e) => {
-              console.error('Video playback error:', e);
+              console.error("Video playback error:", e);
               setIsLoading(false);
               setStreamingUrl(null);
               setVideoLoaded(false);

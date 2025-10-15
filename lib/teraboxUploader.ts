@@ -108,7 +108,14 @@ export async function uploadToTeraBox(
 
 // Helper function to get streaming link from TeraBox file ID
 // This should be called from a server API route, not directly from client
-export async function getTeraBoxStreamingLink(fileId: string): Promise<string> {
+export async function getTeraBoxStreamingLink(
+  fileId: string,
+  quality:
+    | "M3U8_AUTO_480"
+    | "M3U8_AUTO_720"
+    | "M3U8_AUTO_1080"
+    | "ORIGIN" = "M3U8_AUTO_720" // Default to 720p for better quality
+): Promise<string> {
   const credentials = getCredentials();
 
   if (!credentials) {
@@ -121,6 +128,8 @@ export async function getTeraBoxStreamingLink(fileId: string): Promise<string> {
       "terabox-upload-tool/lib/helpers/download/download"
     );
 
+    console.log(`[TeraBox] Requesting streaming link with quality: ${quality}`);
+
     const downloadResult = await getDownloadLink(
       credentials.ndus,
       fileId.toString()
@@ -132,11 +141,27 @@ export async function getTeraBoxStreamingLink(fileId: string): Promise<string> {
     );
 
     if (downloadResult.success && downloadResult.downloadLink) {
+      let streamingLink = downloadResult.downloadLink;
+
+      // Try to append quality parameter to URL if not ORIGIN
+      if (quality !== "ORIGIN") {
+        try {
+          const url = new URL(streamingLink);
+          url.searchParams.set("type", quality);
+          streamingLink = url.toString();
+          console.log(`[TeraBox] Modified URL with quality=${quality}`);
+        } catch {
+          console.warn(
+            "[TeraBox] Failed to modify URL for quality, using original"
+          );
+        }
+      }
+
       console.log(
         "[TeraBox] ✅ Fresh streaming link obtained:",
-        downloadResult.downloadLink
+        streamingLink.substring(0, 100) + "..."
       );
-      return downloadResult.downloadLink;
+      return streamingLink;
     } else {
       throw new Error(`Failed to get download link: ${downloadResult.message}`);
     }

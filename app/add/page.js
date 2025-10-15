@@ -4,6 +4,16 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
+import { supabase, hasSupabase } from "@/lib/supabaseClient";
 
 const AddPage = () => {
   return (
@@ -64,11 +74,61 @@ const Header = () => {
 };
 
 const Content = () => {
-  const router = useRouter();
   const [link, setLink] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [videos, setVideos] = useState([]);
+  const [selectedVideos, setSelectedVideos] = useState(new Set());
+  const [loading, setLoading] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+
+  // Fetch videos from Supabase
+  useEffect(() => {
+    fetchVideos();
+  }, []);
+
+  const fetchVideos = async () => {
+    setLoading(true);
+    try {
+      if (!hasSupabase() || !supabase) {
+        setVideos([]);
+        return;
+      }
+      
+      const { data, error } = await supabase
+        .from("videos")
+        .select("id,title,date,url,actor,thumbnail")
+        .order("date", { ascending: false })
+        .limit(1000);
+
+      if (error) throw error;
+      
+      const mapped = (data || []).map((r) => {
+        if (!r || typeof r !== "object") return null;
+        const url = typeof r.url === "string" ? r.url : undefined;
+        if (!url) return null;
+        // Filter out image links (img.co)
+        if (url.includes("img.co")) return null;
+        return {
+          id: typeof r.id === "number" ? r.id : 
+              typeof r.id === "string" ? parseInt(r.id, 10) || undefined : undefined,
+          title: typeof r.title === "string" ? r.title : undefined,
+          date: typeof r.date === "string" ? r.date : undefined,
+          url,
+          actor: typeof r.actor === "string" ? r.actor : undefined,
+          thumbnail: typeof r.thumbnail === "string" ? r.thumbnail : undefined,
+        };
+      }).filter(Boolean);
+      
+      setVideos(mapped);
+    } catch (error) {
+      console.error("Failed to fetch videos:", error);
+      setVideos([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!link.trim()) {
@@ -101,6 +161,8 @@ const Content = () => {
       // Show success message
       alert(data.message || "업로드 중입니다...");
       setLink("");
+      // Refresh video list
+      fetchVideos();
     } catch (error) {
       console.error("Upload error:", error);
       alert(`업로드 실패: ${error.message}`);
@@ -163,12 +225,60 @@ const Content = () => {
       // Show success message
       alert(data.message || "업로드 중입니다...");
       setSelectedFile(null);
+      // Refresh video list
+      fetchVideos();
     } catch (error) {
       console.error("Upload error:", error);
       alert(`업로드 실패: ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleRegisterSelected = async () => {
+    if (selectedVideos.size === 0) {
+      alert("등록할 비디오를 선택해주세요.");
+      return;
+    }
+
+    const selectedVideoList = videos.filter((v) => selectedVideos.has(v.id));
+    
+    if (!confirm(`선택한 ${selectedVideoList.length}개의 비디오를 등록하시겠습니까?`)) {
+      return;
+    }
+
+    setIsRegistering(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const video of selectedVideoList) {
+      try {
+        const response = await fetch("/api/simple-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: video.url }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "업로드 요청 실패");
+        }
+
+        successCount++;
+        console.log(`등록 성공: ${video.url}`);
+      } catch (error) {
+        console.error(`등록 실패 (${video.url}):`, error);
+        failCount++;
+      }
+    }
+
+    setIsRegistering(false);
+    alert(`등록 완료\n성공: ${successCount}개\n실패: ${failCount}개`);
+    
+    // Clear selection and refresh
+    setSelectedVideos(new Set());
+    fetchVideos();
   };
 
   return (
@@ -180,28 +290,106 @@ const Content = () => {
             <TabsTrigger value="file">파일</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="url" className="mt-6">
-            <label className="block text-gray-500 text-sm mb-2">
-              동영상 URL
-            </label>
-            <input
-              type="text"
-              value={link}
-              onChange={(e) => setLink(e.target.value)}
-              placeholder="https://example.com/video.mp4"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent mb-4"
-              disabled={isSubmitting}
-            />
-            <button
-              onClick={handleSave}
-              disabled={isSubmitting}
-              className="w-full py-3 bg-black text-white rounded-lg hover:bg-opacity-80 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? "등록 중..." : "등록"}
-            </button>
-            <p className="text-sm text-gray-500 mt-4 text-center">
-              등록 후 다운로드, 압축, 업로드가 백그라운드에서 진행됩니다.
-            </p>
+          <TabsContent value="url" className="mt-6 space-y-6">
+            <div>
+              <label className="block text-gray-500 text-sm mb-2">
+                동영상 URL
+              </label>
+              <input
+                type="text"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                placeholder="https://example.com/video.mp4"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent mb-4"
+                disabled={isSubmitting}
+              />
+              <button
+                onClick={handleSave}
+                disabled={isSubmitting}
+                className="w-full py-3 bg-black text-white rounded-lg hover:bg-opacity-80 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? "등록 중..." : "등록"}
+              </button>
+              <p className="text-sm text-gray-500 mt-4 text-center">
+                등록 후 다운로드, 압축, 업로드가 백그라운드에서 진행됩니다.
+              </p>
+            </div>
+
+            {/* Video List Table */}
+            <div className="border rounded-lg bg-white">
+              <div className="p-4 border-b flex justify-between items-center">
+                <h3 className="font-semibold">비디오 목록</h3>
+                <button
+                  onClick={handleRegisterSelected}
+                  disabled={isRegistering || selectedVideos.size === 0}
+                  className="px-4 py-2 bg-black text-white rounded-lg hover:bg-opacity-80 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  {isRegistering ? "등록 중..." : `선택 항목 등록 (${selectedVideos.size})`}
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                {loading ? (
+                  <div className="p-8 text-center text-gray-500">
+                    로딩 중...
+                  </div>
+                ) : videos.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">
+                    등록된 비디오가 없습니다.
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">
+                          <Checkbox
+                            checked={selectedVideos.size === videos.length && videos.length > 0}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedVideos(new Set(videos.map((v) => v.id)));
+                              } else {
+                                setSelectedVideos(new Set());
+                              }
+                            }}
+                          />
+                        </TableHead>
+                        <TableHead className="w-40">날짜</TableHead>
+                        <TableHead>URL</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {videos.map((video) => (
+                        <TableRow key={video.id}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedVideos.has(video.id)}
+                              onCheckedChange={(checked) => {
+                                const newSelected = new Set(selectedVideos);
+                                if (checked) {
+                                  newSelected.add(video.id);
+                                } else {
+                                  newSelected.delete(video.id);
+                                }
+                                setSelectedVideos(newSelected);
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-600">
+                            {video.date ? new Date(video.date).toLocaleDateString("ko-KR", {
+                              year: "numeric",
+                              month: "2-digit",
+                              day: "2-digit",
+                            }).replace(/\. /g, '.').replace(/\.$/, '') : '-'}
+                          </TableCell>
+                          <TableCell className="text-sm truncate max-w-md">
+                            {video.url}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="file" className="mt-6">

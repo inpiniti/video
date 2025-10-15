@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTeraBoxStreamingLink } from "@/lib/teraboxUploader";
 
+// Use Edge Runtime for faster response
+export const runtime = "edge";
+
 // Proxy TeraBox download link for video streaming with Range support
 // This allows <video> tags to play TeraBox videos with seek support
 //
@@ -10,6 +13,12 @@ import { getTeraBoxStreamingLink } from "@/lib/teraboxUploader";
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");
   const fileId = req.nextUrl.searchParams.get("fileId");
+  const quality =
+    (req.nextUrl.searchParams.get("quality") as
+      | "M3U8_AUTO_480"
+      | "M3U8_AUTO_720"
+      | "M3U8_AUTO_1080"
+      | "ORIGIN") || "M3U8_AUTO_720"; // Default to 720p for better quality
 
   if (!url && !fileId) {
     return NextResponse.json(
@@ -22,8 +31,13 @@ export async function GET(req: NextRequest) {
     // If fileId provided, get fresh streaming link
     let streamingUrl = url;
     if (fileId) {
-      console.log("[TeraBox Stream] 🔑 Getting fresh link for fileId:", fileId);
-      streamingUrl = await getTeraBoxStreamingLink(fileId);
+      console.log(
+        "[TeraBox Stream] 🔑 Getting fresh link for fileId:",
+        fileId,
+        "quality:",
+        quality
+      );
+      streamingUrl = await getTeraBoxStreamingLink(fileId, quality);
       console.log("[TeraBox Stream] ✅ Fresh link obtained");
     }
 
@@ -131,7 +145,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error("[TeraBox Stream] Error:", error);
     return NextResponse.json(
-      { error: "Failed to stream video" },
+      { error: `"Failed to stream video : ${error}"` },
       { status: 500 }
     );
   }

@@ -15,12 +15,14 @@ export async function compressVideo(
   console.log(`[Compressor] 🎬 Starting compression...`);
   console.log(`[Compressor] Input: ${inputPath}`);
   console.log(`[Compressor] Output: ${outputPath}`);
+  console.log(`[Compressor] Resolution: 720p (height=720, width=auto)`);
   console.log(
     `[Compressor] Codec: H.264 (AVC) + AAC (MP4) - Universal compatibility`
   );
 
   // H.264 + AAC in MP4 container (Universal browser support)
   // -c:v libx264: H.264/AVC video codec (best compatibility)
+  // -vf scale=-2:720: Scale to 720p height, width auto-calculated (maintains aspect ratio)
   // -crf 23: Constant quality (18=visually lossless, 23=high quality, 28=good quality)
   //          23 is sweet spot for high quality with good compression
   // -preset slow: Slower encoding but better compression (smaller file, same quality)
@@ -33,6 +35,8 @@ export async function compressVideo(
   const args = [
     "-i",
     inputPath,
+    "-vf",
+    "scale=-2:720", // Scale to 720p (width auto, height 720)
     "-c:v",
     "libx264",
     "-crf",
