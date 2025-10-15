@@ -149,19 +149,9 @@ const Item = ({ video }) => {
         }
         if (videoRef.current) videoRef.current.play().catch(() => {});
       } else {
-        if (streamingUrl) {
-          setStreamingUrl(null);
-          setVideoLoaded(false);
-          setIsLoading(false);
-          if (videoRef.current) {
-            try {
-              videoRef.current.pause();
-              videoRef.current.removeAttribute("src");
-              videoRef.current.load();
-            } catch {
-              // ignore
-            }
-          }
+        // 화면에서 벗어나면 일시정지만 하고 URL은 유지 (캐싱)
+        if (videoRef.current && streamingUrl) {
+          videoRef.current.pause();
         }
       }
     };
@@ -169,6 +159,28 @@ const Item = ({ video }) => {
     activeVideo.subscribe(onActive);
     return () => activeVideo.unsubscribe(onActive);
   }, [streamingUrl, video.fs_id]);
+
+  // LRU 캐시: 오래된 비디오 언로드
+  useEffect(() => {
+    if (streamingUrl && videoLoaded) {
+      const videosToUnload = activeVideo.markLoaded(video.fs_id);
+
+      // 현재 비디오가 언로드 대상이면 정리
+      if (videosToUnload && videosToUnload.has(video.fs_id)) {
+        setStreamingUrl(null);
+        setVideoLoaded(false);
+        if (videoRef.current) {
+          try {
+            videoRef.current.pause();
+            videoRef.current.removeAttribute("src");
+            videoRef.current.load();
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+  }, [streamingUrl, videoLoaded, video.fs_id]);
 
   // Intersection Observer로 화면에 보이는지 감지
   useEffect(() => {
@@ -282,6 +294,19 @@ const Item = ({ video }) => {
   const handleFullscreen = (e) => {
     e.stopPropagation();
     if (!videoRef.current) return;
+
+    // iOS Safari 지원
+    if (videoRef.current.webkitEnterFullscreen) {
+      try {
+        videoRef.current.webkitEnterFullscreen();
+        setIsFullscreen(true);
+      } catch (err) {
+        console.error("iOS Fullscreen error:", err);
+      }
+      return;
+    }
+
+    // 일반 브라우저 전체화면
     if (!document.fullscreenElement) {
       videoRef.current.requestFullscreen().catch((err) => {
         console.error("Fullscreen error:", err);
