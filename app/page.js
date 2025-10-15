@@ -2,7 +2,16 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import {
+  Plus,
+  Download,
+  SkipBack,
+  Play,
+  Pause,
+  SkipForward,
+  Gauge,
+  Maximize2,
+} from "lucide-react";
 import activeVideo from "@/lib/activeVideo";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -102,15 +111,14 @@ const Item = ({ video }) => {
   const [streamingUrl, setStreamingUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
-  const [, setIsPlaying] = useState(false);
-  const [, setPlaybackRate] = useState(1);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [, setIsFullscreen] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
   const itemRef = useRef(null);
   const videoRef = useRef(null);
-  const clickCountRef = useRef(0);
-  const clickTimerRef = useRef(null);
   const MAX_RETRIES = 3; // Maximum retry attempts
+  const SPEED_OPTIONS = [1, 1.25, 1.5, 2]; // Speed cycle
 
   const loadAndPlayVideo = useCallback(() => {
     // Don't retry if max retries reached
@@ -212,71 +220,73 @@ const Item = ({ video }) => {
     };
   }, []);
 
-  const handleVideoClick = async (e) => {
-    if (!videoRef.current) return;
-
-    // 비디오가 로드되지 않았으면 로드 시작
-    if (!streamingUrl) {
-      loadAndPlayVideo();
-      return;
-    }
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const width = rect.width;
-    const clickPosition = x / width; // 0 (left) to 1 (right)
-
-    // 클릭 카운트 증가
-    clickCountRef.current += 1;
-
-    // Clear previous timer
-    if (clickTimerRef.current) {
-      clearTimeout(clickTimerRef.current);
-    }
-
-    // Wait 300ms to detect multiple clicks
-    clickTimerRef.current = setTimeout(() => {
-      const clickCount = clickCountRef.current;
-      clickCountRef.current = 0; // Reset
-
-      if (clickCount === 1) {
-        // Single click: seek forward/backward 5 seconds
-        if (clickPosition < 0.5) {
-          // Left side: -5 seconds
-          videoRef.current.currentTime = Math.max(
-            0,
-            videoRef.current.currentTime - 5
-          );
-        } else {
-          // Right side: +5 seconds
-          videoRef.current.currentTime = Math.min(
-            videoRef.current.duration,
-            videoRef.current.currentTime + 5
-          );
-        }
-      } else if (clickCount === 2) {
-        // Double click: toggle playback rate (1x <-> 2x)
-        const newRate = videoRef.current.playbackRate === 1 ? 2 : 1;
-        videoRef.current.playbackRate = newRate;
-        setPlaybackRate(newRate);
-      } else if (clickCount >= 3) {
-        // Triple click: toggle fullscreen
-        if (!document.fullscreenElement) {
-          videoRef.current.requestFullscreen().catch((err) => {
-            console.error("Fullscreen error:", err);
-          });
-          setIsFullscreen(true);
-        } else {
-          document.exitFullscreen();
-          setIsFullscreen(false);
-        }
-      }
-    }, 300);
-  };
-
   const handleImageClick = async () => {
     if (!streamingUrl) {
       loadAndPlayVideo();
+    }
+  };
+
+  // Control functions
+  const handleDownload = (e) => {
+    e.stopPropagation();
+    if (!streamingUrl) return;
+    const link = document.createElement("a");
+    link.href = streamingUrl;
+    link.download = video.server_filename || "video.mp4";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleSkipBackward = (e) => {
+    e.stopPropagation();
+    if (!videoRef.current) return;
+    videoRef.current.currentTime = Math.max(
+      0,
+      videoRef.current.currentTime - 10
+    );
+  };
+
+  const handlePlayPause = (e) => {
+    e.stopPropagation();
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+    } else {
+      videoRef.current.play();
+    }
+  };
+
+  const handleSkipForward = (e) => {
+    e.stopPropagation();
+    if (!videoRef.current) return;
+    videoRef.current.currentTime = Math.min(
+      videoRef.current.duration,
+      videoRef.current.currentTime + 10
+    );
+  };
+
+  const handleSpeedChange = (e) => {
+    e.stopPropagation();
+    if (!videoRef.current) return;
+    const currentIndex = SPEED_OPTIONS.indexOf(playbackRate);
+    const nextIndex = (currentIndex + 1) % SPEED_OPTIONS.length;
+    const newRate = SPEED_OPTIONS[nextIndex];
+    videoRef.current.playbackRate = newRate;
+    setPlaybackRate(newRate);
+  };
+
+  const handleFullscreen = (e) => {
+    e.stopPropagation();
+    if (!videoRef.current) return;
+    if (!document.fullscreenElement) {
+      videoRef.current.requestFullscreen().catch((err) => {
+        console.error("Fullscreen error:", err);
+      });
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
     }
   };
 
@@ -326,7 +336,6 @@ const Item = ({ video }) => {
             muted
             preload="auto"
             src={streamingUrl}
-            onClick={handleVideoClick}
             onLoadedData={() => {
               setVideoLoaded(true);
               setIsLoading(false);
@@ -350,6 +359,68 @@ const Item = ({ video }) => {
             Your browser does not support the video tag.
           </video>
         )}
+      </div>
+      <div className="flex items-center justify-center gap-1 px-2 pt-2">
+        {/* Download */}
+        <button
+          onClick={handleDownload}
+          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+          title="다운로드"
+        >
+          <Download className="w-4 h-4 text-gray-700" />
+        </button>
+
+        {/* 10초 뒤로 */}
+        <button
+          onClick={handleSkipBackward}
+          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+          title="10초 뒤로"
+        >
+          <SkipBack className="w-4 h-4 text-gray-700" />
+        </button>
+
+        {/* Play/Pause */}
+        <button
+          onClick={handlePlayPause}
+          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+          title={isPlaying ? "일시정지" : "재생"}
+        >
+          {isPlaying ? (
+            <Pause className="w-4 h-4 text-gray-700" />
+          ) : (
+            <Play className="w-4 h-4 text-gray-700" />
+          )}
+        </button>
+
+        {/* 10초 앞으로 */}
+        <button
+          onClick={handleSkipForward}
+          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+          title="10초 앞으로"
+        >
+          <SkipForward className="w-4 h-4 text-gray-700" />
+        </button>
+
+        {/* 속도 */}
+        <button
+          onClick={handleSpeedChange}
+          className="px-3 py-2 hover:bg-gray-200 rounded-full transition-colors flex items-center gap-1"
+          title="재생 속도"
+        >
+          <Gauge className="w-4 h-4 text-gray-700" />
+          <span className="text-xs font-medium text-gray-700">
+            x{playbackRate}
+          </span>
+        </button>
+
+        {/* 전체화면 */}
+        <button
+          onClick={handleFullscreen}
+          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+          title="전체화면"
+        >
+          <Maximize2 className="w-4 h-4 text-gray-700" />
+        </button>
       </div>
       <div className="flex gap-2 p-2 items-start">
         <img
