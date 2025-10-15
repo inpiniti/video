@@ -105,15 +105,25 @@ const Item = ({ video }) => {
   const [, setIsPlaying] = useState(false);
   const [, setPlaybackRate] = useState(1);
   const [, setIsFullscreen] = useState(false);
+  const [errorCount, setErrorCount] = useState(0);
   const itemRef = useRef(null);
   const videoRef = useRef(null);
   const clickCountRef = useRef(0);
   const clickTimerRef = useRef(null);
+  const MAX_RETRIES = 3; // Maximum retry attempts
 
   const loadAndPlayVideo = useCallback(() => {
+    // Don't retry if max retries reached
+    if (errorCount >= MAX_RETRIES) {
+      console.warn(
+        `Max retries (${MAX_RETRIES}) reached for video:`,
+        video.fs_id
+      );
+      return;
+    }
     // Request to become the active video. activeVideo manager will notify subscribers.
     activeVideo.requestActive(video.fs_id);
-  }, [video.fs_id]);
+  }, [video.fs_id, errorCount]);
 
   // Subscribe to activeVideo changes: only the active item loads streaming
   useEffect(() => {
@@ -285,8 +295,18 @@ const Item = ({ video }) => {
           />
         )}
 
+        {/* 에러 표시 */}
+        {errorCount >= MAX_RETRIES && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="text-white text-center p-4">
+              <p className="text-sm">재생 실패</p>
+              <p className="text-xs mt-1">최대 재시도 횟수 초과</p>
+            </div>
+          </div>
+        )}
+
         {/* 로딩 인디케이터 */}
-        {isLoading && (
+        {isLoading && errorCount < MAX_RETRIES && (
           <div className="absolute inset-0 flex items-center justify-center">
             <Spinner className="w-12 h-12 text-white" />
           </div>
@@ -315,10 +335,16 @@ const Item = ({ video }) => {
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
             onError={(e) => {
-              console.error("Video playback error:", e);
+              console.error(
+                "Video playback error:",
+                e,
+                "Retry count:",
+                errorCount
+              );
               setIsLoading(false);
               setStreamingUrl(null);
               setVideoLoaded(false);
+              setErrorCount((prev) => prev + 1);
             }}
           >
             Your browser does not support the video tag.
