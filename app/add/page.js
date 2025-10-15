@@ -95,7 +95,7 @@ const Content = () => {
         setVideos([]);
         return;
       }
-      
+
       const { data, error } = await supabase
         .from("videos")
         .select("id,title,date,url,actor,thumbnail")
@@ -103,24 +103,31 @@ const Content = () => {
         .limit(1000);
 
       if (error) throw error;
-      
-      const mapped = (data || []).map((r) => {
-        if (!r || typeof r !== "object") return null;
-        const url = typeof r.url === "string" ? r.url : undefined;
-        if (!url) return null;
-        // Filter out image links (img.co)
-        if (url.includes("img.co")) return null;
-        return {
-          id: typeof r.id === "number" ? r.id : 
-              typeof r.id === "string" ? parseInt(r.id, 10) || undefined : undefined,
-          title: typeof r.title === "string" ? r.title : undefined,
-          date: typeof r.date === "string" ? r.date : undefined,
-          url,
-          actor: typeof r.actor === "string" ? r.actor : undefined,
-          thumbnail: typeof r.thumbnail === "string" ? r.thumbnail : undefined,
-        };
-      }).filter(Boolean);
-      
+
+      const mapped = (data || [])
+        .map((r) => {
+          if (!r || typeof r !== "object") return null;
+          const url = typeof r.url === "string" ? r.url : undefined;
+          if (!url) return null;
+          // Filter out image links (img.co)
+          if (url.includes("img.co")) return null;
+          return {
+            id:
+              typeof r.id === "number"
+                ? r.id
+                : typeof r.id === "string"
+                ? parseInt(r.id, 10) || undefined
+                : undefined,
+            title: typeof r.title === "string" ? r.title : undefined,
+            date: typeof r.date === "string" ? r.date : undefined,
+            url,
+            actor: typeof r.actor === "string" ? r.actor : undefined,
+            thumbnail:
+              typeof r.thumbnail === "string" ? r.thumbnail : undefined,
+          };
+        })
+        .filter(Boolean);
+
       setVideos(mapped);
     } catch (error) {
       console.error("Failed to fetch videos:", error);
@@ -242,8 +249,12 @@ const Content = () => {
     }
 
     const selectedVideoList = videos.filter((v) => selectedVideos.has(v.id));
-    
-    if (!confirm(`선택한 ${selectedVideoList.length}개의 비디오를 등록하시겠습니까?`)) {
+
+    if (
+      !confirm(
+        `선택한 ${selectedVideoList.length}개의 비디오를 등록하시겠습니까?`
+      )
+    ) {
       return;
     }
 
@@ -275,7 +286,7 @@ const Content = () => {
 
     setIsRegistering(false);
     alert(`등록 완료\n성공: ${successCount}개\n실패: ${failCount}개`);
-    
+
     // Clear selection and refresh
     setSelectedVideos(new Set());
     fetchVideos();
@@ -324,7 +335,9 @@ const Content = () => {
                   disabled={isRegistering || selectedVideos.size === 0}
                   className="px-4 py-2 bg-black text-white rounded-lg hover:bg-opacity-80 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
-                  {isRegistering ? "등록 중..." : `선택 항목 등록 (${selectedVideos.size})`}
+                  {isRegistering
+                    ? "등록 중..."
+                    : `선택 항목 등록 (${selectedVideos.size})`}
                 </button>
               </div>
               <div className="overflow-x-auto">
@@ -342,10 +355,15 @@ const Content = () => {
                       <TableRow>
                         <TableHead className="w-12">
                           <Checkbox
-                            checked={selectedVideos.size === videos.length && videos.length > 0}
+                            checked={
+                              selectedVideos.size === videos.length &&
+                              videos.length > 0
+                            }
                             onCheckedChange={(checked) => {
                               if (checked) {
-                                setSelectedVideos(new Set(videos.map((v) => v.id)));
+                                setSelectedVideos(
+                                  new Set(videos.map((v) => v.id))
+                                );
                               } else {
                                 setSelectedVideos(new Set());
                               }
@@ -374,11 +392,16 @@ const Content = () => {
                             />
                           </TableCell>
                           <TableCell className="text-sm text-gray-600">
-                            {video.date ? new Date(video.date).toLocaleDateString("ko-KR", {
-                              year: "numeric",
-                              month: "2-digit",
-                              day: "2-digit",
-                            }).replace(/\. /g, '.').replace(/\.$/, '') : '-'}
+                            {video.date
+                              ? new Date(video.date)
+                                  .toLocaleDateString("ko-KR", {
+                                    year: "numeric",
+                                    month: "2-digit",
+                                    day: "2-digit",
+                                  })
+                                  .replace(/\. /g, ".")
+                                  .replace(/\.$/, "")
+                              : "-"}
                           </TableCell>
                           <TableCell className="text-sm truncate max-w-md">
                             {video.url}
