@@ -1,9 +1,10 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
-import { Spinner } from "@/components/ui/spinner";
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { Plus } from 'lucide-react';
+import activeVideo from '@/lib/activeVideo';
+import { Spinner } from '@/components/ui/spinner';
 
 const Page = () => {
   const [videos, setVideos] = useState([]);
@@ -11,11 +12,11 @@ const Page = () => {
   useEffect(() => {
     const fetchVideos = async () => {
       try {
-        const response = await fetch("/api/fetch-file-list?folderName=/videos");
+        const response = await fetch('/api/fetch-file-list?folderName=/videos');
         const data = await response.json();
         setVideos(data);
       } catch (error) {
-        console.error("Failed to fetch videos:", error);
+        console.error('Failed to fetch videos:', error);
       }
     };
 
@@ -54,18 +55,18 @@ const Header = ({ totalSizeGB }) => {
       setLastScrollY(currentScrollY);
     };
 
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
   }, [lastScrollY]);
 
   const handleAddClick = () => {
-    router.push("/add");
+    router.push('/add');
   };
 
   return (
     <div
       className={`fixed top-0 w-full h-16 flex items-center justify-between px-4 transition-transform duration-300 ease-in-out z-50 bg-white bg-opacity-95 backdrop-blur-sm ${
-        isVisible ? "translate-y-0" : "-translate-y-full"
+        isVisible ? 'translate-y-0' : '-translate-y-full'
       }`}
     >
       <div className="text-sm font-medium text-gray-700">
@@ -98,37 +99,54 @@ const Content = ({ videos }) => {
 };
 
 const Item = ({ video }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
   const [streamingUrl, setStreamingUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [, setIsPlaying] = useState(false);
+  const [, setPlaybackRate] = useState(1);
+  const [, setIsFullscreen] = useState(false);
   const itemRef = useRef(null);
   const videoRef = useRef(null);
   const clickCountRef = useRef(0);
   const clickTimerRef = useRef(null);
-  const lastTapRef = useRef(0);
 
-  const loadAndPlayVideo = useCallback(async () => {
-    if (streamingUrl) {
-      // 이미 로드된 경우 재생만
-      if (videoRef.current) {
-        videoRef.current.play();
-        setIsPlaying(true);
+  const loadAndPlayVideo = useCallback(() => {
+    // Request to become the active video. activeVideo manager will notify subscribers.
+    activeVideo.requestActive(video.fs_id);
+  }, [video.fs_id]);
+
+  // Subscribe to activeVideo changes: only the active item loads streaming
+  useEffect(() => {
+    const onActive = (activeSet) => {
+      const isActive = activeSet && activeSet.has && activeSet.has(video.fs_id);
+
+      if (isActive) {
+        if (!streamingUrl) {
+          setIsLoading(true);
+          const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
+          setStreamingUrl(proxyUrl);
+        }
+        if (videoRef.current) videoRef.current.play().catch(() => {});
+      } else {
+        if (streamingUrl) {
+          setStreamingUrl(null);
+          setVideoLoaded(false);
+          setIsLoading(false);
+          if (videoRef.current) {
+            try {
+              videoRef.current.pause();
+              videoRef.current.removeAttribute('src');
+              videoRef.current.load();
+            } catch {
+              // ignore
+            }
+          }
+        }
       }
-      return;
-    }
+    };
 
-    setIsLoading(true);
-    try {
-      const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
-      setStreamingUrl(proxyUrl);
-      // 비디오가 로드되면 자동 재생
-    } catch (error) {
-      console.error("Error setting up streaming:", error);
-      setIsLoading(false);
-    }
+    activeVideo.subscribe(onActive);
+    return () => activeVideo.unsubscribe(onActive);
   }, [streamingUrl, video.fs_id]);
 
   // Intersection Observer로 화면에 보이는지 감지
@@ -142,10 +160,13 @@ const Item = ({ video }) => {
           loadAndPlayVideo();
         }
 
-        // 화면에서 벗어나면 비디오 일시정지
-        if (!entry.isIntersecting && videoRef.current) {
-          videoRef.current.pause();
-          setIsPlaying(false);
+        // 화면에서 벗어나면 비디오 일시정지 및 active 해제
+        if (!entry.isIntersecting) {
+          activeVideo.clearActive(video.fs_id);
+          if (videoRef.current) {
+            videoRef.current.pause();
+            setIsPlaying(false);
+          }
         } else if (entry.isIntersecting && videoRef.current && streamingUrl) {
           videoRef.current.play().catch(() => {
             // 자동 재생 실패 시 무시 (브라우저 정책)
@@ -167,7 +188,7 @@ const Item = ({ video }) => {
         observer.unobserve(currentRef);
       }
     };
-  }, [streamingUrl, loadAndPlayVideo]);
+  }, [streamingUrl, loadAndPlayVideo, video.fs_id]);
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -175,9 +196,9 @@ const Item = ({ video }) => {
       setIsFullscreen(!!document.fullscreenElement);
     };
 
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
   }, []);
 
@@ -232,7 +253,7 @@ const Item = ({ video }) => {
         // Triple click: toggle fullscreen
         if (!document.fullscreenElement) {
           videoRef.current.requestFullscreen().catch((err) => {
-            console.error("Fullscreen error:", err);
+            console.error('Fullscreen error:', err);
           });
           setIsFullscreen(true);
         } else {
@@ -277,7 +298,7 @@ const Item = ({ video }) => {
             ref={videoRef}
             className="w-full block"
             style={{
-              display: videoLoaded ? "block" : "none",
+              display: videoLoaded ? 'block' : 'none',
             }}
             autoPlay
             playsInline
@@ -294,7 +315,7 @@ const Item = ({ video }) => {
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
             onError={(e) => {
-              console.error("Video playback error:", e);
+              console.error('Video playback error:', e);
               setIsLoading(false);
               setStreamingUrl(null);
               setVideoLoaded(false);
