@@ -89,7 +89,7 @@ const Header = ({ totalSizeGB }) => {
 const Content = ({ videos }) => {
   return (
     <div className="pt-16 sm:px-2 mx-auto">
-      <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 3xl:columns-7 4xl:columns-8 gap-2">
+      <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 columns-3xl columns-4xl gap-2">
         {videos.map((video) => (
           <Item key={video.fs_id} video={video} />
         ))}

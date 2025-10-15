@@ -143,3 +143,16 @@ video:-ms-fullscreen {
     @apply bg-background text-foreground;
   }
 }
+
+/* Custom breakpoint utilities for 3xl and 4xl */
+@media (min-width: 1920px) {
+  .columns-3xl {
+    columns: 7;
+  }
+}
+
+@media (min-width: 2560px) {
+  .columns-4xl {
+    columns: 8;
+  }
+}
