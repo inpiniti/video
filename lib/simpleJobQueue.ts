@@ -234,6 +234,23 @@ async function processCompress() {
       }
     );
 
+    // null이면 파일이 너무 커서 스킵
+    if (compressedPath === null) {
+      console.log(
+        `[JobQueue] ⚠️ Skipping upload - file too large even at lowest quality`
+      );
+      nextJob.status = "error";
+      nextJob.error = "File too large (>50MB even at 320p). Skipped upload.";
+      nextJob.completedAt = Date.now();
+
+      // Cleanup download file
+      const fs = await import("fs/promises");
+      await fs.unlink(downloadPath).catch(() => {});
+      delete nextJob.downloadPath;
+
+      return; // 다음 작업으로 진행
+    }
+
     // Move to upload queue
     nextJob.status = "uploading";
     nextJob.progress = { percentage: 0 };

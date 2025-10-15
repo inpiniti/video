@@ -4,45 +4,37 @@
 import { spawn } from "child_process";
 import { join } from "path";
 import { tmpdir } from "os";
+import { statSync, existsSync, unlinkSync, renameSync } from "fs";
 
-export async function compressVideo(
+const MAX_FILE_SIZE_MB = 50; // 50MB 제한
+const RESOLUTIONS = [
+  { height: 720, name: "720p" },
+  { height: 640, name: "640p" },
+  { height: 480, name: "480p" },
+  { height: 320, name: "320p" },
+];
+
+async function compressWithResolution(
   inputPath: string,
-  jobId: string,
+  outputPath: string,
+  height: number,
   onProgress?: (percent: number, message: string) => void
-): Promise<string> {
-  const outputPath = join(tmpdir(), `${jobId}_compressed.mp4`);
-
-  console.log(`[Compressor] 🎬 Starting compression...`);
+): Promise<void> {
+  console.log(`[Compressor] 🎬 Attempting compression at ${height}p...`);
   console.log(`[Compressor] Input: ${inputPath}`);
   console.log(`[Compressor] Output: ${outputPath}`);
-  console.log(`[Compressor] Resolution: 720p (height=720, width=auto)`);
-  console.log(
-    `[Compressor] Codec: H.264 (AVC) + AAC (MP4) - Universal compatibility`
-  );
 
-  // H.264 + AAC in MP4 container (Universal browser support)
-  // -c:v libx264: H.264/AVC video codec (best compatibility)
-  // -vf scale=-2:720: Scale to 720p height, width auto-calculated (maintains aspect ratio)
-  // -crf 23: Constant quality (18=visually lossless, 23=high quality, 28=good quality)
-  //          23 is sweet spot for high quality with good compression
-  // -preset slow: Slower encoding but better compression (smaller file, same quality)
-  // -profile:v high: High profile for better compression
-  // -level 4.2: Compatibility level for most devices
-  // -movflags +faststart: Enable progressive streaming (fast start playback)
-  // -c:a aac: AAC audio codec (universal compatibility)
-  // -b:a 128k: Audio bitrate (good quality for voice/music)
-  // -pix_fmt yuv420p: Color format for maximum compatibility
   const args = [
     "-i",
     inputPath,
     "-vf",
-    "scale=-2:720", // Scale to 720p (width auto, height 720)
+    `scale=-2:${height}`,
     "-c:v",
     "libx264",
     "-crf",
-    "23", // High quality
+    "23",
     "-preset",
-    "slow", // Better compression
+    "slow",
     "-profile:v",
     "high",
     "-level",
@@ -59,12 +51,7 @@ export async function compressVideo(
     outputPath,
   ];
 
-  console.log(`[Compressor] 🔧 FFmpeg command: ffmpeg ${args.join(" ")}`);
-  console.log(
-    `[Compressor] ⏳ This may take several minutes... (slower preset for better compression)`
-  );
-
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     const ffmpeg = spawn("ffmpeg", args);
     let stderr = "";
     let lastProgress = "";
@@ -74,7 +61,6 @@ export async function compressVideo(
       const text = chunk.toString();
       stderr += text;
 
-      // Extract total duration (appears at start)
       if (!duration) {
         const durationMatch = text.match(
           /Duration: (\d{2}):(\d{2}):(\d{2})\.\d{2}/
@@ -84,17 +70,10 @@ export async function compressVideo(
           const minutes = parseInt(durationMatch[2]);
           const seconds = parseInt(durationMatch[3]);
           duration = hours * 3600 + minutes * 60 + seconds;
-          console.log(
-            `[Compressor] 📹 Video duration: ${durationMatch[1]}:${durationMatch[2]}:${durationMatch[3]}`
-          );
         }
       }
 
-      // Extract progress information
       const progressMatch = text.match(/time=(\d{2}):(\d{2}):(\d{2})\.\d{2}/);
-      const fpsMatch = text.match(/fps=\s*(\d+)/);
-      const sizeMatch = text.match(/size=\s*(\d+kB)/);
-
       if (progressMatch) {
         const hours = parseInt(progressMatch[1]);
         const minutes = parseInt(progressMatch[2]);
@@ -106,19 +85,14 @@ export async function compressVideo(
           percent = Math.min(100, (currentTime / duration) * 100);
         }
 
-        const message = `${progressMatch[0]} ${
-          fpsMatch ? `| ${fpsMatch[1]} fps` : ""
-        } ${sizeMatch ? `| ${sizeMatch[1]}` : ""}`;
         const currentProgress = `[Compressor] ⏳ Progress: ${percent.toFixed(
           1
-        )}% - ${message}`;
-
+        )}%`;
         if (currentProgress !== lastProgress) {
           console.log(currentProgress);
           lastProgress = currentProgress;
-
           if (onProgress) {
-            onProgress(percent, message);
+            onProgress(percent, `Compressing at ${height}p`);
           }
         }
       }
@@ -126,24 +100,113 @@ export async function compressVideo(
 
     ffmpeg.on("close", (code) => {
       if (code === 0) {
-        console.log(`[Compressor] ✅ Compression complete!`);
-        console.log(`[Compressor] Output file: ${outputPath}`);
-
-        if (onProgress) {
-          onProgress(100, "Complete");
-        }
-
-        resolve(outputPath);
+        resolve();
       } else {
-        console.error(`[Compressor] ❌ FFmpeg failed with code ${code}`);
-        console.error(`[Compressor] Error output:`, stderr);
         reject(new Error(`ffmpeg failed (${code}): ${stderr}`));
       }
     });
 
-    ffmpeg.on("error", (err) => {
-      console.error(`[Compressor] ❌ FFmpeg spawn error:`, err);
-      reject(err);
-    });
+    ffmpeg.on("error", reject);
   });
+}
+
+export async function compressVideo(
+  inputPath: string,
+  jobId: string,
+  onProgress?: (percent: number, message: string) => void
+): Promise<string | null> {
+  console.log(`[Compressor] 🎬 Starting adaptive compression...`);
+  console.log(`[Compressor] Input: ${inputPath}`);
+  console.log(`[Compressor] Max file size: ${MAX_FILE_SIZE_MB}MB`);
+
+  // 각 해상도별로 시도
+  for (let i = 0; i < RESOLUTIONS.length; i++) {
+    const resolution = RESOLUTIONS[i];
+    const outputPath = join(
+      tmpdir(),
+      `${jobId}_compressed_${resolution.name}.mp4`
+    );
+
+    console.log(
+      `\n[Compressor] 📐 Trying ${resolution.name} (${resolution.height}p)...`
+    );
+
+    try {
+      // 압축 실행
+      await compressWithResolution(
+        inputPath,
+        outputPath,
+        resolution.height,
+        onProgress
+      );
+
+      // 파일 크기 확인
+      const fileSizeBytes = statSync(outputPath).size;
+      const fileSizeMB = fileSizeBytes / (1024 * 1024);
+
+      console.log(
+        `[Compressor] � Compressed file size: ${fileSizeMB.toFixed(2)}MB`
+      );
+
+      if (fileSizeMB <= MAX_FILE_SIZE_MB) {
+        console.log(`[Compressor] ✅ File size OK! Using ${resolution.name}`);
+
+        // 최종 파일명으로 변경
+        const finalPath = join(tmpdir(), `${jobId}_compressed.mp4`);
+        if (finalPath !== outputPath) {
+          // 기존 파일이 있으면 삭제
+          if (existsSync(finalPath)) {
+            unlinkSync(finalPath);
+          }
+          renameSync(outputPath, finalPath);
+        }
+
+        if (onProgress) {
+          onProgress(100, `Complete at ${resolution.name}`);
+        }
+
+        return finalPath;
+      } else {
+        console.log(
+          `[Compressor] ⚠️ File too large (${fileSizeMB.toFixed(
+            2
+          )}MB > ${MAX_FILE_SIZE_MB}MB)`
+        );
+
+        // 임시 파일 삭제
+        if (existsSync(outputPath)) {
+          unlinkSync(outputPath);
+        }
+
+        // 마지막 해상도까지 시도했으면 실패
+        if (i === RESOLUTIONS.length - 1) {
+          console.log(
+            `[Compressor] ❌ All resolutions tried. File still too large. Skipping upload.`
+          );
+          return null;
+        }
+
+        console.log(`[Compressor] 🔄 Trying next resolution...`);
+      }
+    } catch (error) {
+      console.error(
+        `[Compressor] ❌ Error compressing at ${resolution.name}:`,
+        error
+      );
+
+      // 임시 파일 정리
+      if (existsSync(outputPath)) {
+        unlinkSync(outputPath);
+      }
+
+      // 압축 자체가 실패하면 다음 해상도로 계속 시도
+      if (i === RESOLUTIONS.length - 1) {
+        throw error; // 마지막 해상도에서도 실패하면 에러 throw
+      }
+    }
+  }
+
+  // 여기까지 오면 모든 해상도 시도 실패
+  console.log(`[Compressor] ❌ All compression attempts failed`);
+  return null;
 }
