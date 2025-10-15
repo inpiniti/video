@@ -3,6 +3,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Custom breakpoints for Tailwind v4 */
+@custom-media --3xl (min-width: 1920px);
+@custom-media --4xl (min-width: 2560px);
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -41,10 +45,6 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-
-  /* Custom breakpoints */
-  --breakpoint-3xl: 1920px;
-  --breakpoint-4xl: 2560px;
 }
 
 :root {
