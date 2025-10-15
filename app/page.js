@@ -37,8 +37,9 @@ const Page = () => {
     videos.reduce((sum, video) => sum + (video.size || 0), 0) / 1024 ** 3;
 
   return (
-    <div className="w-screen h-screen">
+    <div className="w-screen h-screen bg-neutral-50">
       <Header totalSizeGB={totalSizeGB} />
+      <div className="bg-white h-16 w-full"></div>
       <Content videos={videos} />
     </div>
   );
@@ -74,7 +75,7 @@ const Header = ({ totalSizeGB }) => {
 
   return (
     <div
-      className={`fixed top-0 w-full h-16 flex items-center justify-between px-4 transition-transform duration-300 ease-in-out z-50 bg-white bg-opacity-95 backdrop-blur-sm ${
+      className={`fixed top-0 w-full h-16 flex items-center justify-between px-4 transition-transform duration-300 ease-in-out z-50 backdrop-blur-sm ${
         isVisible ? "translate-y-0" : "-translate-y-full"
       }`}
     >
@@ -97,8 +98,8 @@ const Header = ({ totalSizeGB }) => {
 
 const Content = ({ videos }) => {
   return (
-    <div className="pt-16 sm:px-2 mx-auto">
-      <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 columns-3xl columns-4xl gap-2">
+    <div className="sm:px-4 pt-4 mx-auto">
+      <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 columns-3xl columns-4xl gap-4">
         {videos.map((video) => (
           <Item key={video.fs_id} video={video} />
         ))}
@@ -115,6 +116,8 @@ const Item = ({ video }) => {
   const [playbackRate, setPlaybackRate] = useState(1);
   const [, setIsFullscreen] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const itemRef = useRef(null);
   const videoRef = useRef(null);
   const MAX_RETRIES = 3; // Maximum retry attempts
@@ -290,8 +293,44 @@ const Item = ({ video }) => {
     }
   };
 
+  const handleProgressClick = (e) => {
+    if (!videoRef.current || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percentage = x / rect.width;
+    videoRef.current.currentTime = duration * percentage;
+  };
+
+  const formatTime = (seconds) => {
+    if (!seconds || isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
   return (
-    <div className="break-inside-avoid mb-2" ref={itemRef}>
+    <div className="break-inside-avoid mb-4 bg-white" ref={itemRef}>
+      <div className="flex gap-2 p-2 items-start">
+        <img
+          src={video.thumbs.icon}
+          alt="TeraBox"
+          className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+        />
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="font-medium text-sm truncate">
+            {video.server_filename}
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 truncate">
+              {video.fs_id}
+            </span>
+            <span className="text-xs text-gray-400">•</span>
+            <span className="text-xs text-gray-500 flex-shrink-0">
+              {((video.size || 0) / 1024 ** 2).toFixed(2)} MB
+            </span>
+          </div>
+        </div>
+      </div>
       <div
         className="relative w-full cursor-pointer aspect-square"
         onClick={handleImageClick}
@@ -340,6 +379,14 @@ const Item = ({ video }) => {
               setVideoLoaded(true);
               setIsLoading(false);
               setIsPlaying(true);
+              if (videoRef.current) {
+                setDuration(videoRef.current.duration);
+              }
+            }}
+            onTimeUpdate={() => {
+              if (videoRef.current) {
+                setCurrentTime(videoRef.current.currentTime);
+              }
             }}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
@@ -360,7 +407,8 @@ const Item = ({ video }) => {
           </video>
         )}
       </div>
-      <div className="flex items-center justify-center gap-1 px-2 pt-2">
+
+      <div className="flex items-center justify-center gap-1 px-2">
         {/* Download */}
         <button
           onClick={handleDownload}
@@ -422,25 +470,27 @@ const Item = ({ video }) => {
           <Maximize2 className="w-4 h-4 text-gray-700" />
         </button>
       </div>
-      <div className="flex gap-2 p-2 items-start">
-        <img
-          src={video.thumbs.icon}
-          alt="TeraBox"
-          className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
-        />
-        <div className="flex flex-col min-w-0 flex-1">
-          <span className="font-medium text-sm truncate">
-            {video.server_filename}
+      <div className="py-2">
+        {/* 재생바 */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-600 min-w-[35px] text-right">
+            {formatTime(currentTime)}
           </span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 truncate">
-              {video.fs_id}
-            </span>
-            <span className="text-xs text-gray-400">•</span>
-            <span className="text-xs text-gray-500 flex-shrink-0">
-              {((video.size || 0) / 1024 ** 2).toFixed(2)} MB
-            </span>
+          <div
+            className="flex-1 h-1 bg-gray-200 rounded-full cursor-pointer relative overflow-hidden"
+            onClick={handleProgressClick}
+          >
+            <div
+              className="h-full bg-black transition-all duration-100"
+              style={{
+                width:
+                  duration > 0 ? `${(currentTime / duration) * 100}%` : "0%",
+              }}
+            />
           </div>
+          <span className="text-xs text-gray-600 min-w-[35px]">
+            {formatTime(duration)}
+          </span>
         </div>
       </div>
     </div>
