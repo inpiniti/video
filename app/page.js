@@ -89,7 +89,7 @@ const Header = ({ totalSizeGB }) => {
 const Content = ({ videos }) => {
   return (
     <div className="pt-16 sm:px-2 mx-auto">
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 3xl:grid-cols-7 gap-2">
+      <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 gap-2">
         {videos.map((video) => (
           <Item key={video.fs_id} video={video} />
         ))}
@@ -271,7 +271,7 @@ const Item = ({ video }) => {
   };
 
   return (
-    <div ref={itemRef}>
+    <div className="break-inside-avoid mb-2" ref={itemRef}>
       <div
         className="relative w-full cursor-pointer aspect-square"
         onClick={handleImageClick}
