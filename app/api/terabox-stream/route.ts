@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTeraBoxStreamingLink } from "@/lib/teraboxUploader";
 
-// Use Edge Runtime for faster response
-export const runtime = "edge";
-
 // Proxy TeraBox download link for video streaming with Range support
 // This allows <video> tags to play TeraBox videos with seek support
 //
