@@ -25,16 +25,29 @@ const streamManager = {
   // subscribe a callback for a specific video id
   subscribe(id: string, cb: StreamCallback) {
     callbacks.set(id, cb);
+    // If this id is already streaming, notify immediately so subscriber can start
+    if (streamingSet.has(id)) {
+      try {
+        cb(true);
+      } catch (e) {
+        console.error(
+          `[streamManager] callback error on subscribe for ${id}:`,
+          e
+        );
+      }
+    }
   },
   unsubscribe(id: string) {
     callbacks.delete(id);
   },
   // request streaming for id: enqueue or start immediately
   requestStream(id: string) {
+    console.log(`[streamManager] requestStream: ${id}`);
     if (streamingSet.has(id)) return;
     if (queue.includes(id)) return;
     // if slot available start immediately
     if (streamingSet.size < MAX_CONCURRENT) {
+      console.log(`[streamManager] starting stream immediately: ${id}`);
       streamingSet.add(id);
       const cb = callbacks.get(id);
       if (cb) {
@@ -45,6 +58,7 @@ const streamManager = {
         }
       }
     } else {
+      console.log(`[streamManager] queueing stream: ${id}`);
       queue.push(id);
     }
   },

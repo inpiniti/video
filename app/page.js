@@ -121,6 +121,7 @@ const Item = ({ video }) => {
   const [duration, setDuration] = useState(0);
   const itemRef = useRef(null);
   const videoRef = useRef(null);
+  const streamingUrlRef = useRef(streamingUrl);
   const MAX_RETRIES = 3; // Maximum retry attempts
   const SPEED_OPTIONS = [1, 1.25, 1.5, 2]; // Speed cycle
 
@@ -135,11 +136,12 @@ const Item = ({ video }) => {
     }
     // Request to become the active video. activeVideo manager will notify subscribers.
     activeVideo.requestActive(video.fs_id);
-    // Also request streaming slot (streamManager will queue and call our callback)
-    streamManager.requestStream(video.fs_id);
   }, [video.fs_id, errorCount]);
 
   // Subscribe to activeVideo changes: only the active item loads streaming
+  useEffect(() => {
+    streamingUrlRef.current = streamingUrl;
+  }, [streamingUrl]);
   useEffect(() => {
     // Callback from activeVideo (focus play/pause)
     const onActive = (activeSet) => {
@@ -158,10 +160,11 @@ const Item = ({ video }) => {
     // Callback from streamManager to start/stop streaming
     const streamCb = (start) => {
       if (start) {
-        if (!streamingUrl) {
+        if (!streamingUrlRef.current) {
           setIsLoading(true);
           const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
           setStreamingUrl(proxyUrl);
+          streamingUrlRef.current = proxyUrl;
         }
       } else {
         // stop streaming: release src but keep loaded state if needed
@@ -173,6 +176,7 @@ const Item = ({ video }) => {
           } catch {}
         }
         setStreamingUrl(null);
+        streamingUrlRef.current = null;
         setVideoLoaded(false);
       }
     };
@@ -183,10 +187,18 @@ const Item = ({ video }) => {
     return () => {
       activeVideo.unsubscribe(onActive);
       streamManager.unsubscribe(video.fs_id);
-      // ensure we finish streaming slot if mounted
+      // ensure we finish streaming slot when unmounting
       streamManager.finish(video.fs_id);
     };
-  }, [streamingUrl, video.fs_id]);
+  }, [video.fs_id]);
+
+  // Request streaming slot on mount regardless of focus. streamManager will queue and start up to 10.
+  useEffect(() => {
+    streamManager.requestStream(video.fs_id);
+    return () => {
+      streamManager.finish(video.fs_id);
+    };
+  }, [video.fs_id]);
 
   // LRU 캐시: 오래된 비디오 언로드
   useEffect(() => {
@@ -420,7 +432,13 @@ const Item = ({ video }) => {
             ref={videoRef}
             className="w-full block"
             style={{
-              display: videoLoaded ? "block" : "none",
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              opacity: videoLoaded ? 1 : 0,
+              transition: "opacity 200ms ease",
             }}
             autoPlay
             playsInline
