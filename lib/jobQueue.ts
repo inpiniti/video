@@ -184,6 +184,22 @@ async function processJob(job: Job) {
     );
     console.log(`[Job ${job.id}] ✅ Compressed to: ${compressedPath}`);
 
+    // If compression returned null, it means file was too large even at lowest quality.
+    if (compressedPath === null) {
+      console.log(
+        `[Job ${job.id}] ⚠️ File too large (>50MB even at 320p). Skipping upload.`
+      );
+      job.status = "error";
+      job.error = "File too large (>50MB even at 320p). Skipped upload.";
+      job.progress = { percentage: 100, message: "Skipped (file too large)" };
+
+      // Cleanup download file
+      const fs = await import("fs/promises");
+      await fs.unlink(downloadPath).catch(() => {});
+
+      return;
+    }
+
     // 3. Upload to TeraBox
     console.log(`[Job ${job.id}] ⬆️  Step 3/3: Uploading to TeraBox...`);
     job.status = "uploading";
