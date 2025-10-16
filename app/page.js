@@ -185,20 +185,21 @@ const Item = ({ video }) => {
     streamManager.subscribe(video.fs_id, streamCb);
 
     return () => {
+      // cleanup subscriptions
       activeVideo.unsubscribe(onActive);
       streamManager.unsubscribe(video.fs_id);
       // ensure we finish streaming slot when unmounting
-      streamManager.finish(video.fs_id);
+      try {
+        streamManager.finish(video.fs_id);
+      } catch {
+        // ignore
+      }
     };
   }, [video.fs_id]);
 
-  // Request streaming slot on mount regardless of focus. streamManager will queue and start up to 10.
-  useEffect(() => {
-    streamManager.requestStream(video.fs_id);
-    return () => {
-      streamManager.finish(video.fs_id);
-    };
-  }, [video.fs_id]);
+  // 이전 동작: 마운트 시 바로 스트리밍 요청하던 코드 제거
+  // 이제는 IntersectionObserver에서 화면에 보일 때만 스트리밍을 요청하고,
+  // 화면을 벗어나면 스트리밍을 중단(소스 제거)하여 브라우저가 버퍼를 잡지 않도록 함.
 
   // LRU 캐시: 오래된 비디오 언로드
   useEffect(() => {
@@ -230,15 +231,31 @@ const Item = ({ video }) => {
       ([entry]) => {
         // 화면에 보이면 자동 로드 및 재생
         if (entry.isIntersecting && !streamingUrl) {
+          // 화면에 들어오면 스트리밍을 요청하고 active로 등록
+          // activeVideo.requestActive가 재생을 담당함
+          streamManager.requestStream(video.fs_id);
           loadAndPlayVideo();
         }
 
         // 화면에서 벗어나면 비디오 일시정지 및 active 해제
         if (!entry.isIntersecting) {
+          // 화면을 벗어나면 active 해제 및 스트리밍 중단
           activeVideo.clearActive(video.fs_id);
+          try {
+            // stop streaming slot and remove source so browser won't keep downloading
+            streamManager.finish(video.fs_id);
+          } catch (err) {
+            console.error("streamManager.finish error on leave:", err);
+          }
           if (videoRef.current) {
-            videoRef.current.pause();
+            try {
+              videoRef.current.pause();
+              videoRef.current.removeAttribute("src");
+              videoRef.current.load();
+            } catch {}
             setIsPlaying(false);
+            setStreamingUrl(null);
+            setVideoLoaded(false);
           }
         } else if (entry.isIntersecting && videoRef.current && streamingUrl) {
           videoRef.current.play().catch(() => {
@@ -453,12 +470,8 @@ const Item = ({ video }) => {
               if (videoRef.current) {
                 setDuration(videoRef.current.duration);
               }
-              // Release streaming slot (we have loaded enough to play)
-              try {
-                streamManager.finish(video.fs_id);
-              } catch (err) {
-                console.error("streamManager.finish error:", err);
-              }
+              // 이전 동작은 로드되면 즉시 스트리밍 슬롯을 해제했으나,
+              // 롤백 요구로 인해 스트리밍은 화면에서 벗어나면 해제하도록 한다.
             }}
             onTimeUpdate={() => {
               if (videoRef.current) {
