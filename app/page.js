@@ -23,6 +23,7 @@ const Page = () => {
       try {
         const response = await fetch("/api/fetch-file-list?folderName=/videos");
         const data = await response.json();
+
         setVideos(data);
       } catch (error) {
         console.error("Failed to fetch videos:", error);
@@ -120,7 +121,10 @@ const Item = ({ video }) => {
   const MAX_RETRIES = 3; // Maximum retry attempts
   const SPEED_OPTIONS = [1, 1.25, 1.5, 2]; // Speed cycle
 
+  const [delay, setDelay] = useState(true); // Initial delay of 1 second
+
   const loadAndPlayVideo = useCallback(() => {
+    if (delay) return; // If in delay period, do nothing
     // Don't retry if max retries reached
     if (errorCount >= MAX_RETRIES) {
       console.warn(
@@ -131,10 +135,11 @@ const Item = ({ video }) => {
     }
     // Request to become the active video. activeVideo manager will notify subscribers.
     activeVideo.requestActive(video.fs_id);
-  }, [video.fs_id, errorCount]);
+  }, [video.fs_id, errorCount, delay]);
 
   // Subscribe to activeVideo changes: only the active item loads streaming
   useEffect(() => {
+    if (delay) return; // If in delay period, do nothing
     const onActive = (activeSet) => {
       const isActive = activeSet && activeSet.has && activeSet.has(video.fs_id);
 
@@ -165,7 +170,7 @@ const Item = ({ video }) => {
 
     activeVideo.subscribe(onActive);
     return () => activeVideo.unsubscribe(onActive);
-  }, [streamingUrl, video.fs_id]);
+  }, [streamingUrl, video.fs_id, delay]);
 
   // Intersection Observer로 화면에 보이는지 감지
   useEffect(() => {
@@ -175,11 +180,13 @@ const Item = ({ video }) => {
       ([entry]) => {
         // 화면에 보이면 자동 로드 및 재생
         if (entry.isIntersecting && !streamingUrl) {
+          setTimeout(() => setDelay(false), 3000); // 3초 후에 delay 해제
           loadAndPlayVideo();
         }
 
         // 화면에서 벗어나면 비디오 일시정지 및 active 해제
         if (!entry.isIntersecting) {
+          setDelay(true); // 다시 delay 설정
           activeVideo.clearActive(video.fs_id);
           if (videoRef.current) {
             videoRef.current.pause();
