@@ -2,17 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Plus,
-  Download,
-  SkipBack,
-  Play,
-  Pause,
-  SkipForward,
-  Gauge,
-  Maximize2,
-} from "lucide-react";
-import activeVideo from "@/lib/activeVideo";
+import { Plus } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 
 const Page = () => {
@@ -23,7 +13,6 @@ const Page = () => {
       try {
         const response = await fetch("/api/fetch-file-list?folderName=/videos");
         const data = await response.json();
-
         setVideos(data);
       } catch (error) {
         console.error("Failed to fetch videos:", error);
@@ -99,7 +88,7 @@ const Header = ({ totalSizeGB }) => {
 const Content = ({ videos }) => {
   return (
     <div className="pt-16 sm:px-2 mx-auto">
-      <div className="pt-2 columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 columns-3xl columns-4xl gap-2">
+      <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 gap-2">
         {videos.map((video) => (
           <Item key={video.fs_id} video={video} />
         ))}
@@ -109,68 +98,38 @@ const Content = ({ videos }) => {
 };
 
 const Item = ({ video }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
   const [streamingUrl, setStreamingUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [, setIsFullscreen] = useState(false);
-  const [errorCount, setErrorCount] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const itemRef = useRef(null);
   const videoRef = useRef(null);
-  const MAX_RETRIES = 3; // Maximum retry attempts
-  const SPEED_OPTIONS = [1, 1.25, 1.5, 2]; // Speed cycle
+  const clickCountRef = useRef(0);
+  const clickTimerRef = useRef(null);
+  const lastTapRef = useRef(0);
 
-  const [delay, setDelay] = useState(true); // Initial delay of 1 second
-
-  const loadAndPlayVideo = useCallback(() => {
-    if (delay) return; // If in delay period, do nothing
-    // Don't retry if max retries reached
-    if (errorCount >= MAX_RETRIES) {
-      console.warn(
-        `Max retries (${MAX_RETRIES}) reached for video:`,
-        video.fs_id
-      );
+  const loadAndPlayVideo = useCallback(async () => {
+    if (streamingUrl) {
+      // 이미 로드된 경우 재생만
+      if (videoRef.current) {
+        videoRef.current.play();
+        setIsPlaying(true);
+      }
       return;
     }
-    // Request to become the active video. activeVideo manager will notify subscribers.
-    activeVideo.requestActive(video.fs_id);
-  }, [video.fs_id, errorCount, delay]);
 
-  // Subscribe to activeVideo changes: only the active item loads streaming
-  useEffect(() => {
-    if (delay) return; // If in delay period, do nothing
-    const onActive = (activeSet) => {
-      const isActive = activeSet && activeSet.has && activeSet.has(video.fs_id);
-
-      if (isActive) {
-        if (!streamingUrl) {
-          setIsLoading(true);
-          const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
-          setStreamingUrl(proxyUrl);
-        }
-        if (videoRef.current) videoRef.current.play().catch(() => {});
-      } else {
-        if (streamingUrl) {
-          setStreamingUrl(null);
-          setVideoLoaded(false);
-          setIsLoading(false);
-          if (videoRef.current) {
-            try {
-              videoRef.current.pause();
-              videoRef.current.removeAttribute("src");
-              videoRef.current.load();
-            } catch {
-              // ignore
-            }
-          }
-        }
-      }
-    };
-
-    activeVideo.subscribe(onActive);
-    return () => activeVideo.unsubscribe(onActive);
-  }, [streamingUrl, video.fs_id, delay]);
+    setIsLoading(true);
+    try {
+      const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
+      setStreamingUrl(proxyUrl);
+      // 비디오가 로드되면 자동 재생
+    } catch (error) {
+      console.error("Error setting up streaming:", error);
+      setIsLoading(false);
+    }
+  }, [streamingUrl, video.fs_id]);
 
   // Intersection Observer로 화면에 보이는지 감지
   useEffect(() => {
@@ -180,18 +139,13 @@ const Item = ({ video }) => {
       ([entry]) => {
         // 화면에 보이면 자동 로드 및 재생
         if (entry.isIntersecting && !streamingUrl) {
-          setTimeout(() => setDelay(false), 3000); // 3초 후에 delay 해제
           loadAndPlayVideo();
         }
 
-        // 화면에서 벗어나면 비디오 일시정지 및 active 해제
-        if (!entry.isIntersecting) {
-          setDelay(true); // 다시 delay 설정
-          activeVideo.clearActive(video.fs_id);
-          if (videoRef.current) {
-            videoRef.current.pause();
-            setIsPlaying(false);
-          }
+        // 화면에서 벗어나면 비디오 일시정지
+        if (!entry.isIntersecting && videoRef.current) {
+          videoRef.current.pause();
+          setIsPlaying(false);
         } else if (entry.isIntersecting && videoRef.current && streamingUrl) {
           videoRef.current.play().catch(() => {
             // 자동 재생 실패 시 무시 (브라우저 정책)
@@ -213,7 +167,7 @@ const Item = ({ video }) => {
         observer.unobserve(currentRef);
       }
     };
-  }, [streamingUrl, loadAndPlayVideo, video.fs_id]);
+  }, [streamingUrl, loadAndPlayVideo]);
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -227,102 +181,76 @@ const Item = ({ video }) => {
     };
   }, []);
 
+  const handleVideoClick = async (e) => {
+    if (!videoRef.current) return;
+
+    // 비디오가 로드되지 않았으면 로드 시작
+    if (!streamingUrl) {
+      loadAndPlayVideo();
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const width = rect.width;
+    const clickPosition = x / width; // 0 (left) to 1 (right)
+
+    // 클릭 카운트 증가
+    clickCountRef.current += 1;
+
+    // Clear previous timer
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+    }
+
+    // Wait 300ms to detect multiple clicks
+    clickTimerRef.current = setTimeout(() => {
+      const clickCount = clickCountRef.current;
+      clickCountRef.current = 0; // Reset
+
+      if (clickCount === 1) {
+        // Single click: seek forward/backward 5 seconds
+        if (clickPosition < 0.5) {
+          // Left side: -5 seconds
+          videoRef.current.currentTime = Math.max(
+            0,
+            videoRef.current.currentTime - 5
+          );
+        } else {
+          // Right side: +5 seconds
+          videoRef.current.currentTime = Math.min(
+            videoRef.current.duration,
+            videoRef.current.currentTime + 5
+          );
+        }
+      } else if (clickCount === 2) {
+        // Double click: toggle playback rate (1x <-> 2x)
+        const newRate = videoRef.current.playbackRate === 1 ? 2 : 1;
+        videoRef.current.playbackRate = newRate;
+        setPlaybackRate(newRate);
+      } else if (clickCount >= 3) {
+        // Triple click: toggle fullscreen
+        if (!document.fullscreenElement) {
+          videoRef.current.requestFullscreen().catch((err) => {
+            console.error("Fullscreen error:", err);
+          });
+          setIsFullscreen(true);
+        } else {
+          document.exitFullscreen();
+          setIsFullscreen(false);
+        }
+      }
+    }, 300);
+  };
+
   const handleImageClick = async () => {
     if (!streamingUrl) {
       loadAndPlayVideo();
     }
   };
 
-  // Control functions
-  const handleDownload = (e) => {
-    e.stopPropagation();
-    if (!streamingUrl) return;
-    const link = document.createElement("a");
-    link.href = streamingUrl;
-    link.download = video.server_filename || "video.mp4";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleSkipBackward = (e) => {
-    e.stopPropagation();
-    if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.max(
-      0,
-      videoRef.current.currentTime - 10
-    );
-  };
-
-  const handlePlayPause = (e) => {
-    e.stopPropagation();
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      videoRef.current.pause();
-    } else {
-      videoRef.current.play();
-    }
-  };
-
-  const handleSkipForward = (e) => {
-    e.stopPropagation();
-    if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.min(
-      videoRef.current.duration,
-      videoRef.current.currentTime + 10
-    );
-  };
-
-  const handleSpeedChange = (e) => {
-    e.stopPropagation();
-    if (!videoRef.current) return;
-    const currentIndex = SPEED_OPTIONS.indexOf(playbackRate);
-    const nextIndex = (currentIndex + 1) % SPEED_OPTIONS.length;
-    const newRate = SPEED_OPTIONS[nextIndex];
-    videoRef.current.playbackRate = newRate;
-    setPlaybackRate(newRate);
-  };
-
-  const handleFullscreen = (e) => {
-    e.stopPropagation();
-    if (!videoRef.current) return;
-    if (!document.fullscreenElement) {
-      videoRef.current.requestFullscreen().catch((err) => {
-        console.error("Fullscreen error:", err);
-      });
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
-  };
-
   return (
-    <div
-      className={`bg-white break-inside-avoid mb-2 border sm:rounded-xl shadow-2xl ${
-        videoLoaded ? "border-red-400" : "border-transparent"
-      }`}
-      ref={itemRef}
-    >
-      <div className="flex gap-2 p-2 items-start">
-        <img
-          src={video.thumbs.icon}
-          alt="TeraBox"
-          className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
-        />
-        <div className="flex flex-col min-w-0 flex-1">
-          <span className="font-medium text-sm truncate">{streamingUrl}</span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 truncate">
-              {video.fs_id}
-            </span>
-            <span className="text-xs text-gray-400">•</span>
-            <span className="text-xs text-gray-500 flex-shrink-0">
-              {((video.size || 0) / 1024 ** 2).toFixed(2)} MB
-            </span>
-          </div>
-        </div>
-      </div>
+    <div ref={itemRef} className="break-inside-avoid bg-white mb-4">
       <div
         className="relative w-full cursor-pointer"
         onClick={handleImageClick}
@@ -336,18 +264,8 @@ const Item = ({ video }) => {
           />
         )}
 
-        {/* 에러 표시 */}
-        {errorCount >= MAX_RETRIES && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="text-white text-center p-4">
-              <p className="text-sm">재생 실패</p>
-              <p className="text-xs mt-1">최대 재시도 횟수 초과</p>
-            </div>
-          </div>
-        )}
-
         {/* 로딩 인디케이터 */}
-        {isLoading && errorCount < MAX_RETRIES && (
+        {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center">
             <Spinner className="w-12 h-12 text-white" />
           </div>
@@ -367,6 +285,7 @@ const Item = ({ video }) => {
             muted
             preload="auto"
             src={streamingUrl}
+            onClick={handleVideoClick}
             onLoadedData={() => {
               setVideoLoaded(true);
               setIsLoading(false);
@@ -375,83 +294,36 @@ const Item = ({ video }) => {
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
             onError={(e) => {
-              console.error(
-                "Video playback error:",
-                e,
-                "Retry count:",
-                errorCount
-              );
+              console.error("Video playback error:", e);
               setIsLoading(false);
               setStreamingUrl(null);
               setVideoLoaded(false);
-              setErrorCount((prev) => prev + 1);
             }}
           >
             Your browser does not support the video tag.
           </video>
         )}
       </div>
-      <div className="flex items-center justify-center gap-1 px-2">
-        {/* Download */}
-        <button
-          onClick={handleDownload}
-          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-          title="다운로드"
-        >
-          <Download className="w-4 h-4 text-gray-700" />
-        </button>
-
-        {/* 10초 뒤로 */}
-        <button
-          onClick={handleSkipBackward}
-          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-          title="10초 뒤로"
-        >
-          <SkipBack className="w-4 h-4 text-gray-700" />
-        </button>
-
-        {/* Play/Pause */}
-        <button
-          onClick={handlePlayPause}
-          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-          title={isPlaying ? "일시정지" : "재생"}
-        >
-          {isPlaying ? (
-            <Pause className="w-4 h-4 text-gray-700" />
-          ) : (
-            <Play className="w-4 h-4 text-gray-700" />
-          )}
-        </button>
-
-        {/* 10초 앞으로 */}
-        <button
-          onClick={handleSkipForward}
-          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-          title="10초 앞으로"
-        >
-          <SkipForward className="w-4 h-4 text-gray-700" />
-        </button>
-
-        {/* 속도 */}
-        <button
-          onClick={handleSpeedChange}
-          className="px-3 py-2 hover:bg-gray-200 rounded-full transition-colors flex items-center gap-1"
-          title="재생 속도"
-        >
-          <Gauge className="w-4 h-4 text-gray-700" />
-          <span className="text-xs font-medium text-gray-700">
-            x{playbackRate}
+      <div className="flex gap-2 p-2 items-start">
+        <img
+          src={video.thumbs.icon}
+          alt="TeraBox"
+          className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+        />
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="font-medium text-sm truncate">
+            {video.server_filename}
           </span>
-        </button>
-
-        {/* 전체화면 */}
-        <button
-          onClick={handleFullscreen}
-          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-          title="전체화면"
-        >
-          <Maximize2 className="w-4 h-4 text-gray-700" />
-        </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 truncate">
+              {video.fs_id}
+            </span>
+            <span className="text-xs text-gray-400">•</span>
+            <span className="text-xs text-gray-500 flex-shrink-0">
+              {((video.size || 0) / 1024 ** 2).toFixed(2)} MB
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
