@@ -13,7 +13,6 @@ import {
   Maximize2,
 } from "lucide-react";
 import activeVideo from "@/lib/activeVideo";
-import streamManager from "@/lib/streamManager";
 import { Spinner } from "@/components/ui/spinner";
 
 const Page = () => {
@@ -38,9 +37,8 @@ const Page = () => {
     videos.reduce((sum, video) => sum + (video.size || 0), 0) / 1024 ** 3;
 
   return (
-    <div className="w-screen h-screen bg-neutral-50">
+    <div className="w-screen bg-neutral-100">
       <Header totalSizeGB={totalSizeGB} />
-      <div className="bg-white h-16 w-full"></div>
       <Content videos={videos} />
     </div>
   );
@@ -76,7 +74,7 @@ const Header = ({ totalSizeGB }) => {
 
   return (
     <div
-      className={`fixed top-0 w-full h-16 flex items-center justify-between px-4 transition-transform duration-300 ease-in-out z-50 backdrop-blur-sm ${
+      className={`fixed top-0 w-full h-16 flex items-center justify-between px-4 transition-transform duration-300 ease-in-out z-50 bg-white bg-opacity-95 backdrop-blur-sm ${
         isVisible ? "translate-y-0" : "-translate-y-full"
       }`}
     >
@@ -99,8 +97,8 @@ const Header = ({ totalSizeGB }) => {
 
 const Content = ({ videos }) => {
   return (
-    <div className="sm:px-4 pt-4 mx-auto">
-      <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 columns-3xl columns-4xl gap-4">
+    <div className="pt-16 sm:px-2 mx-auto">
+      <div className="pt-2 columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 columns-3xl columns-4xl gap-2">
         {videos.map((video) => (
           <Item key={video.fs_id} video={video} />
         ))}
@@ -114,15 +112,11 @@ const Item = ({ video }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [, setIsFullscreen] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
   const itemRef = useRef(null);
   const videoRef = useRef(null);
-  const streamingUrlRef = useRef(streamingUrl);
   const MAX_RETRIES = 3; // Maximum retry attempts
   const SPEED_OPTIONS = [1, 1.25, 1.5, 2]; // Speed cycle
 
@@ -141,88 +135,37 @@ const Item = ({ video }) => {
 
   // Subscribe to activeVideo changes: only the active item loads streaming
   useEffect(() => {
-    streamingUrlRef.current = streamingUrl;
-  }, [streamingUrl]);
-  useEffect(() => {
-    // Callback from activeVideo (focus play/pause)
     const onActive = (activeSet) => {
       const isActive = activeSet && activeSet.has && activeSet.has(video.fs_id);
 
       if (isActive) {
-        if (videoRef.current) videoRef.current.play().catch(() => {});
-      } else {
-        // 화면에서 벗어나면 일시정지
-        if (videoRef.current) {
-          videoRef.current.pause();
-        }
-      }
-    };
-
-    // Callback from streamManager to start/stop streaming
-    const streamCb = (start) => {
-      if (start) {
-        if (!streamingUrlRef.current) {
+        if (!streamingUrl) {
           setIsLoading(true);
           const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
           setStreamingUrl(proxyUrl);
-          streamingUrlRef.current = proxyUrl;
         }
+        if (videoRef.current) videoRef.current.play().catch(() => {});
       } else {
-        // stop streaming: release src but keep loaded state if needed
-        if (videoRef.current) {
-          try {
-            videoRef.current.pause();
-            videoRef.current.removeAttribute("src");
-            videoRef.current.load();
-          } catch {}
+        if (streamingUrl) {
+          setStreamingUrl(null);
+          setVideoLoaded(false);
+          setIsLoading(false);
+          if (videoRef.current) {
+            try {
+              videoRef.current.pause();
+              videoRef.current.removeAttribute("src");
+              videoRef.current.load();
+            } catch {
+              // ignore
+            }
+          }
         }
-        setStreamingUrl(null);
-        streamingUrlRef.current = null;
-        setVideoLoaded(false);
       }
     };
 
     activeVideo.subscribe(onActive);
-    streamManager.subscribe(video.fs_id, streamCb);
-
-    return () => {
-      // cleanup subscriptions
-      activeVideo.unsubscribe(onActive);
-      streamManager.unsubscribe(video.fs_id);
-      // ensure we finish streaming slot when unmounting
-      try {
-        streamManager.finish(video.fs_id);
-      } catch {
-        // ignore
-      }
-    };
-  }, [video.fs_id]);
-
-  // 이전 동작: 마운트 시 바로 스트리밍 요청하던 코드 제거
-  // 이제는 IntersectionObserver에서 화면에 보일 때만 스트리밍을 요청하고,
-  // 화면을 벗어나면 스트리밍을 중단(소스 제거)하여 브라우저가 버퍼를 잡지 않도록 함.
-
-  // LRU 캐시: 오래된 비디오 언로드
-  useEffect(() => {
-    if (streamingUrl && videoLoaded) {
-      const videosToUnload = activeVideo.markLoaded(video.fs_id);
-
-      // 현재 비디오가 언로드 대상이면 정리
-      if (videosToUnload && videosToUnload.has(video.fs_id)) {
-        setStreamingUrl(null);
-        setVideoLoaded(false);
-        if (videoRef.current) {
-          try {
-            videoRef.current.pause();
-            videoRef.current.removeAttribute("src");
-            videoRef.current.load();
-          } catch {
-            // ignore
-          }
-        }
-      }
-    }
-  }, [streamingUrl, videoLoaded, video.fs_id]);
+    return () => activeVideo.unsubscribe(onActive);
+  }, [streamingUrl, video.fs_id]);
 
   // Intersection Observer로 화면에 보이는지 감지
   useEffect(() => {
@@ -230,35 +173,17 @@ const Item = ({ video }) => {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        // track visibility for playback when stream becomes available
-        setIsVisible(entry.isIntersecting);
         // 화면에 보이면 자동 로드 및 재생
         if (entry.isIntersecting && !streamingUrl) {
-          // 화면에 들어오면 스트리밍을 요청하고 active로 등록
-          // activeVideo.requestActive가 재생을 담당함
-          streamManager.requestStream(video.fs_id);
           loadAndPlayVideo();
         }
 
         // 화면에서 벗어나면 비디오 일시정지 및 active 해제
         if (!entry.isIntersecting) {
-          // 화면을 벗어나면 active 해제 및 스트리밍 중단
           activeVideo.clearActive(video.fs_id);
-          try {
-            // stop streaming slot and remove source so browser won't keep downloading
-            streamManager.finish(video.fs_id);
-          } catch (err) {
-            console.error("streamManager.finish error on leave:", err);
-          }
           if (videoRef.current) {
-            try {
-              videoRef.current.pause();
-              videoRef.current.removeAttribute("src");
-              videoRef.current.load();
-            } catch {}
+            videoRef.current.pause();
             setIsPlaying(false);
-            setStreamingUrl(null);
-            setVideoLoaded(false);
           }
         } else if (entry.isIntersecting && videoRef.current && streamingUrl) {
           videoRef.current.play().catch(() => {
@@ -282,19 +207,6 @@ const Item = ({ video }) => {
       }
     };
   }, [streamingUrl, loadAndPlayVideo, video.fs_id]);
-
-  // If the stream URL becomes available while the item is visible,
-  // ensure playback is started. This fixes cases where the stream slot
-  // is granted after the element entered view and play was attempted
-  // earlier (race condition).
-  useEffect(() => {
-    if (streamingUrl && isVisible && videoRef.current) {
-      // try to play when source is set
-      videoRef.current.play().catch(() => {
-        // ignore autoplay policy failures
-      });
-    }
-  }, [streamingUrl, isVisible]);
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -367,19 +279,6 @@ const Item = ({ video }) => {
   const handleFullscreen = (e) => {
     e.stopPropagation();
     if (!videoRef.current) return;
-
-    // iOS Safari 지원
-    if (videoRef.current.webkitEnterFullscreen) {
-      try {
-        videoRef.current.webkitEnterFullscreen();
-        setIsFullscreen(true);
-      } catch (err) {
-        console.error("iOS Fullscreen error:", err);
-      }
-      return;
-    }
-
-    // 일반 브라우저 전체화면
     if (!document.fullscreenElement) {
       videoRef.current.requestFullscreen().catch((err) => {
         console.error("Fullscreen error:", err);
@@ -391,23 +290,13 @@ const Item = ({ video }) => {
     }
   };
 
-  const handleProgressClick = (e) => {
-    if (!videoRef.current || !duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const percentage = x / rect.width;
-    videoRef.current.currentTime = duration * percentage;
-  };
-
-  const formatTime = (seconds) => {
-    if (!seconds || isNaN(seconds)) return "0:00";
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
   return (
-    <div className="break-inside-avoid mb-4 bg-white" ref={itemRef}>
+    <div
+      className={`bg-white break-inside-avoid mb-2 border sm:rounded-xl shadow-2xl ${
+        videoLoaded ? "border-red-400" : "border-transparent"
+      }`}
+      ref={itemRef}
+    >
       <div className="flex gap-2 p-2 items-start">
         <img
           src={video.thumbs.icon}
@@ -415,9 +304,7 @@ const Item = ({ video }) => {
           className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
         />
         <div className="flex flex-col min-w-0 flex-1">
-          <span className="font-medium text-sm truncate">
-            {video.server_filename}
-          </span>
+          <span className="font-medium text-sm truncate">{streamingUrl}</span>
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 truncate">
               {video.fs_id}
@@ -430,7 +317,7 @@ const Item = ({ video }) => {
         </div>
       </div>
       <div
-        className="relative w-full cursor-pointer aspect-square"
+        className="relative w-full cursor-pointer"
         onClick={handleImageClick}
       >
         {/* 썸네일 이미지 - 항상 표시하고 비디오 로딩 중에도 보임 */}
@@ -465,13 +352,7 @@ const Item = ({ video }) => {
             ref={videoRef}
             className="w-full block"
             style={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              opacity: videoLoaded ? 1 : 0,
-              transition: "opacity 200ms ease",
+              display: videoLoaded ? "block" : "none",
             }}
             autoPlay
             playsInline
@@ -483,18 +364,6 @@ const Item = ({ video }) => {
               setVideoLoaded(true);
               setIsLoading(false);
               setIsPlaying(true);
-              if (videoRef.current) {
-                setDuration(videoRef.current.duration);
-                // ensure playback starts once data is loaded
-                videoRef.current.play().catch(() => {});
-              }
-              // 이전 동작은 로드되면 즉시 스트리밍 슬롯을 해제했으나,
-              // 롤백 요구로 인해 스트리밍은 화면에서 벗어나면 해제하도록 한다.
-            }}
-            onTimeUpdate={() => {
-              if (videoRef.current) {
-                setCurrentTime(videoRef.current.currentTime);
-              }
             }}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
@@ -509,18 +378,12 @@ const Item = ({ video }) => {
               setStreamingUrl(null);
               setVideoLoaded(false);
               setErrorCount((prev) => prev + 1);
-              try {
-                streamManager.finish(video.fs_id);
-              } catch (err) {
-                console.error("streamManager.finish error:", err);
-              }
             }}
           >
             Your browser does not support the video tag.
           </video>
         )}
       </div>
-
       <div className="flex items-center justify-center gap-1 px-2">
         {/* Download */}
         <button
@@ -582,29 +445,6 @@ const Item = ({ video }) => {
         >
           <Maximize2 className="w-4 h-4 text-gray-700" />
         </button>
-      </div>
-      <div className="py-2">
-        {/* 재생바 */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-600 min-w-[35px] text-right">
-            {formatTime(currentTime)}
-          </span>
-          <div
-            className="flex-1 h-1 bg-gray-200 rounded-full cursor-pointer relative overflow-hidden"
-            onClick={handleProgressClick}
-          >
-            <div
-              className="h-full bg-black transition-all duration-100"
-              style={{
-                width:
-                  duration > 0 ? `${(currentTime / duration) * 100}%` : "0%",
-              }}
-            />
-          </div>
-          <span className="text-xs text-gray-600 min-w-[35px]">
-            {formatTime(duration)}
-          </span>
-        </div>
       </div>
     </div>
   );
