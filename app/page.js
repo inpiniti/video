@@ -13,6 +13,7 @@ import {
   Maximize2,
 } from "lucide-react";
 import activeVideo from "@/lib/activeVideo";
+import streamManager from "@/lib/streamManager";
 import { Spinner } from "@/components/ui/spinner";
 
 const Page = () => {
@@ -134,30 +135,57 @@ const Item = ({ video }) => {
     }
     // Request to become the active video. activeVideo manager will notify subscribers.
     activeVideo.requestActive(video.fs_id);
+    // Also request streaming slot (streamManager will queue and call our callback)
+    streamManager.requestStream(video.fs_id);
   }, [video.fs_id, errorCount]);
 
   // Subscribe to activeVideo changes: only the active item loads streaming
   useEffect(() => {
+    // Callback from activeVideo (focus play/pause)
     const onActive = (activeSet) => {
       const isActive = activeSet && activeSet.has && activeSet.has(video.fs_id);
 
       if (isActive) {
-        if (!streamingUrl) {
-          setIsLoading(true);
-          const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
-          setStreamingUrl(proxyUrl);
-        }
         if (videoRef.current) videoRef.current.play().catch(() => {});
       } else {
-        // 화면에서 벗어나면 일시정지만 하고 URL은 유지 (캐싱)
-        if (videoRef.current && streamingUrl) {
+        // 화면에서 벗어나면 일시정지
+        if (videoRef.current) {
           videoRef.current.pause();
         }
       }
     };
 
+    // Callback from streamManager to start/stop streaming
+    const streamCb = (start) => {
+      if (start) {
+        if (!streamingUrl) {
+          setIsLoading(true);
+          const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
+          setStreamingUrl(proxyUrl);
+        }
+      } else {
+        // stop streaming: release src but keep loaded state if needed
+        if (videoRef.current) {
+          try {
+            videoRef.current.pause();
+            videoRef.current.removeAttribute("src");
+            videoRef.current.load();
+          } catch {}
+        }
+        setStreamingUrl(null);
+        setVideoLoaded(false);
+      }
+    };
+
     activeVideo.subscribe(onActive);
-    return () => activeVideo.unsubscribe(onActive);
+    streamManager.subscribe(video.fs_id, streamCb);
+
+    return () => {
+      activeVideo.unsubscribe(onActive);
+      streamManager.unsubscribe(video.fs_id);
+      // ensure we finish streaming slot if mounted
+      streamManager.finish(video.fs_id);
+    };
   }, [streamingUrl, video.fs_id]);
 
   // LRU 캐시: 오래된 비디오 언로드
@@ -407,6 +435,12 @@ const Item = ({ video }) => {
               if (videoRef.current) {
                 setDuration(videoRef.current.duration);
               }
+              // Release streaming slot (we have loaded enough to play)
+              try {
+                streamManager.finish(video.fs_id);
+              } catch (err) {
+                console.error("streamManager.finish error:", err);
+              }
             }}
             onTimeUpdate={() => {
               if (videoRef.current) {
@@ -426,6 +460,11 @@ const Item = ({ video }) => {
               setStreamingUrl(null);
               setVideoLoaded(false);
               setErrorCount((prev) => prev + 1);
+              try {
+                streamManager.finish(video.fs_id);
+              } catch (err) {
+                console.error("streamManager.finish error:", err);
+              }
             }}
           >
             Your browser does not support the video tag.
