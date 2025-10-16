@@ -114,6 +114,7 @@ const Item = ({ video }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [, setIsFullscreen] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
@@ -229,6 +230,8 @@ const Item = ({ video }) => {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
+        // track visibility for playback when stream becomes available
+        setIsVisible(entry.isIntersecting);
         // 화면에 보이면 자동 로드 및 재생
         if (entry.isIntersecting && !streamingUrl) {
           // 화면에 들어오면 스트리밍을 요청하고 active로 등록
@@ -279,6 +282,19 @@ const Item = ({ video }) => {
       }
     };
   }, [streamingUrl, loadAndPlayVideo, video.fs_id]);
+
+  // If the stream URL becomes available while the item is visible,
+  // ensure playback is started. This fixes cases where the stream slot
+  // is granted after the element entered view and play was attempted
+  // earlier (race condition).
+  useEffect(() => {
+    if (streamingUrl && isVisible && videoRef.current) {
+      // try to play when source is set
+      videoRef.current.play().catch(() => {
+        // ignore autoplay policy failures
+      });
+    }
+  }, [streamingUrl, isVisible]);
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -469,6 +485,8 @@ const Item = ({ video }) => {
               setIsPlaying(true);
               if (videoRef.current) {
                 setDuration(videoRef.current.duration);
+                // ensure playback starts once data is loaded
+                videoRef.current.play().catch(() => {});
               }
               // 이전 동작은 로드되면 즉시 스트리밍 슬롯을 해제했으나,
               // 롤백 요구로 인해 스트리밍은 화면에서 벗어나면 해제하도록 한다.
