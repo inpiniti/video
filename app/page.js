@@ -11,9 +11,19 @@ const Page = () => {
   useEffect(() => {
     const fetchVideos = async () => {
       try {
-        const response = await fetch("/api/fetch-file-list?folderName=/videos");
-        const data = await response.json();
-        setVideos(data);
+        const response1 = await fetch(
+          "/api/fetch-file-list?folderName=/videos1"
+        );
+        const data1 = await response1.json();
+        const response2 = await fetch(
+          "/api/fetch-file-list?folderName=/videos2"
+        );
+        const data2 = await response2.json();
+        const response3 = await fetch(
+          "/api/fetch-file-list?folderName=/videos3"
+        );
+        const data3 = await response3.json();
+        setVideos([...data1, ...data2, ...data3]);
       } catch (error) {
         console.error("Failed to fetch videos:", error);
       }
