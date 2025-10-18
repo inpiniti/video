@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 const Page = () => {
   const [videos, setVideos] = useState([]);
@@ -95,18 +96,56 @@ const Header = ({ totalSizeGB }) => {
   );
 };
 
+// Content: tanstack virtual 적용 (variable heights, overscan: 5)
 const Content = ({ videos }) => {
+  const parentRef = useRef(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: videos.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 320, // 대략 예상 높이
+    overscan: 5, // 현재 포커스 주변 ±5 정도 렌더링
+  });
+
   return (
     <div className="pt-16 sm:px-2 mx-auto">
-      <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 gap-2">
-        {videos.map((video) => (
-          <Item key={video.fs_id} video={video} />
-        ))}
+      <div
+        ref={parentRef}
+        className="w-full mx-auto"
+        style={{ height: "calc(100vh - 4rem)", overflowY: "auto" }}
+      >
+        <div
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            position: "relative",
+          }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const video = videos[virtualRow.index];
+            if (!video) return null;
+            return (
+              <div
+                key={virtualRow.key}
+                ref={(el) => rowVirtualizer.measureElement(el)}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                <Item video={video} />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 };
 
+// Item: 기존 동작 유지, measure는 부모에서 수행하므로 별도 변경은 최소화
 const Item = ({ video }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [streamingUrl, setStreamingUrl] = useState(null);

@@ -392,3 +392,32 @@ If credentials are not set, the uploader will fall back to mock mode.
 5. Video plays on all devices including iPhone/Safari with much smaller file size
 
 For detailed documentation, see `UPLOAD_PIPELINE.md`.
+
+## 홈화면 가상화 (tanstack virtual) 적용
+
+홈화면의 `Content` 컴포넌트가 `@tanstack/react-virtual`을 사용하도록 변경되었습니다. 주요 목적은 높이가 서로 다른(item별 variable height) 항목들을 효율적으로 렌더링하여 스크롤 성능을 개선하는 것입니다.
+
+주요 변경사항
+
+- 파일: `app/page.js`의 `Content` 컴포넌트를 가상화 기반으로 교체.
+- 라이브러리: `@tanstack/react-virtual` 사용.
+- 동작: 각 항목은 실제 DOM 측정(`measureElement`)으로 높이를 계산하며, `overscan: 5`로 현재 포커스(스크롤 위치 기준) 주변 약 ±5개의 항목만 미리 렌더링합니다. 따라서 중간쯤에서는 최대 11개(포커스 포함)가 렌더링될 수 있습니다.
+- 스크롤 컨테이너 높이: 상단 헤더(고정 4rem)를 고려해 `height: calc(100vh - 4rem)`로 설정.
+
+설치
+
+프로젝트에 아직 패키지가 없다면 설치합니다:
+
+- npm: `npm install @tanstack/react-virtual`
+- pnpm: `pnpm add @tanstack/react-virtual`
+
+주의사항
+
+- estimateSize 값(예: 320px)은 초기 추정치입니다. 실제 평균 항목 높이에 맞춰 조정하면 초기 레이아웃 안정성이 좋아집니다.
+- virtualizer는 렌더된 요소의 루트 DOM 노드를 측정하므로, 항목(wrapper)이 실제 크기를 가져야 정확히 측정됩니다. (`position: absolute`로 배치된 wrapper에 대해 `measureElement`를 호출하는 패턴을 사용합니다.)
+- 매우 빠른 스크롤이나 레이아웃 변화가 많을 경우 측정 비용이 증가할 수 있으니 필요 시 overscan/estimateSize를 조정하세요.
+
+향후 권장 작업
+
+- estimateSize를 실제 데이터로 통계내어 동적으로 계산하거나, 초기 렌더 시 첫 N개의 항목을 측정하여 평균값을 사용하면 더 안정적입니다.
+- 현재 포커스 아이템을 중앙에 고정하는 스크롤 보정 기능을 추가할 수 있습니다.
