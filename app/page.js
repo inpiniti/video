@@ -147,38 +147,11 @@ const Content = ({ videos }) => {
 
 // Item: 기존 동작 유지, 썸네일 이미지를 제거하고 video.poster 사용
 const Item = ({ video }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [streamingUrl, setStreamingUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [videoLoaded, setVideoLoaded] = useState(false);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const itemRef = useRef(null);
   const videoRef = useRef(null);
   const clickCountRef = useRef(0);
   const clickTimerRef = useRef(null);
-  const lastTapRef = useRef(0);
-
-  const loadAndPlayVideo = useCallback(async () => {
-    if (streamingUrl) {
-      // 이미 로드된 경우 재생만
-      if (videoRef.current) {
-        videoRef.current.play();
-        setIsPlaying(true);
-      }
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
-      setStreamingUrl(proxyUrl);
-      // 비디오가 로드되면 자동 재생 (autoPlay prop will handle it)
-    } catch (error) {
-      console.error("Error setting up streaming:", error);
-      setIsLoading(false);
-    }
-  }, [streamingUrl, video.fs_id]);
 
   // Intersection Observer로 화면에 보이는지 감지
   useEffect(() => {
@@ -186,18 +159,11 @@ const Item = ({ video }) => {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        // 화면에 보이면 자동 로드 및 재생
-        if (entry.isIntersecting && !streamingUrl) {
-          loadAndPlayVideo();
-        }
-
         // 화면에서 벗어나면 비디오 일시정지
         if (!entry.isIntersecting && videoRef.current) {
           videoRef.current.pause();
-          setIsPlaying(false);
-        } else if (entry.isIntersecting && videoRef.current && streamingUrl) {
+        } else if (entry.isIntersecting && videoRef.current) {
           videoRef.current.play().catch(() => {});
-          setIsPlaying(true);
         }
       },
       {
@@ -214,14 +180,10 @@ const Item = ({ video }) => {
         observer.unobserve(currentRef);
       }
     };
-  }, [streamingUrl, loadAndPlayVideo]);
+  }, [loadAndPlayVideo]);
 
   // Listen for fullscreen changes
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
@@ -230,12 +192,6 @@ const Item = ({ video }) => {
 
   const handleVideoClick = async (e) => {
     if (!videoRef.current) return;
-
-    // 비디오가 로드되지 않았으면 로드 시작
-    if (!streamingUrl) {
-      loadAndPlayVideo();
-      return;
-    }
 
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -274,60 +230,40 @@ const Item = ({ video }) => {
         // Double click: toggle playback rate (1x <-> 2x)
         const newRate = videoRef.current.playbackRate === 1 ? 2 : 1;
         videoRef.current.playbackRate = newRate;
-        setPlaybackRate(newRate);
       } else if (clickCount >= 3) {
         // Triple click: toggle fullscreen
         if (!document.fullscreenElement) {
           videoRef.current.requestFullscreen().catch((err) => {
             console.error("Fullscreen error:", err);
           });
-          setIsFullscreen(true);
         } else {
           document.exitFullscreen();
-          setIsFullscreen(false);
         }
       }
     }, 300);
   };
 
-  const handleImageClick = async () => {
-    // 이전에는 썸네일 클릭으로 로드했지만 이제 video.poster를 사용하므로 동일하게 로드 동작만 수행
-    if (!streamingUrl) {
-      loadAndPlayVideo();
-    }
-  };
-
   return (
     <div ref={itemRef} className="break-inside-avoid bg-white mb-4">
-      <div
-        className="relative w-full cursor-pointer"
-        onClick={handleImageClick}
-      >
-        {/* video 태그에 poster 적용. streamingUrl이 없으면 poster가 보이고, streamingUrl이 설정되면 src로 로드되어 재생됩니다. */}
+      <div className="relative w-full cursor-pointer">
+        {/* video 태그에 poster 적용. */}
         <video
           ref={videoRef}
           className="w-full block"
-          poster={video.thumbs?.url3}
+          poster={video?.thumbs?.url3}
           style={{ display: "block" }}
-          autoPlay={!!streamingUrl}
           playsInline
           loop
           muted
           preload="metadata"
-          src={streamingUrl || undefined}
+          src={`/api/terabox-stream?fileId=${video?.fs_id}`}
           onClick={handleVideoClick}
           onLoadedData={() => {
-            setVideoLoaded(true);
             setIsLoading(false);
-            setIsPlaying(true);
           }}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
           onError={(e) => {
             console.error("Video playback error:", e);
             setIsLoading(false);
-            setStreamingUrl(null);
-            setVideoLoaded(false);
           }}
         >
           Your browser does not support the video tag.
