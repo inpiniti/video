@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
@@ -124,19 +124,18 @@ const Content = ({ videos }) => {
             const video = videos[virtualRow.index];
             if (!video) return null;
             return (
-              <div
+              <Item
                 key={virtualRow.key}
-                ref={(el) => rowVirtualizer.measureElement(el)}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${virtualRow.start}px)`,
+                video={video}
+                virtualRow={virtualRow}
+                measureElement={(el) => {
+                  try {
+                    rowVirtualizer.measureElement(el);
+                  } catch (e) {
+                    // ignore
+                  }
                 }}
-              >
-                <Item video={video} />
-              </div>
+              />
             );
           })}
         </div>
@@ -145,48 +144,94 @@ const Content = ({ videos }) => {
   );
 };
 
-// Item: 기존 동작 유지, 썸네일 이미지를 제거하고 video.poster 사용
-const Item = ({ video }) => {
+// Item: poster 이미지 로드 기반으로 높이 계산하고 virtualizer에 측정 요청
+const Item = ({ video, virtualRow, measureElement }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const itemRef = useRef(null);
+  const rootRef = useRef(null);
   const videoRef = useRef(null);
   const clickCountRef = useRef(0);
   const clickTimerRef = useRef(null);
 
+  // 계산 및 측정 함수
+  const computeHeightAndMeasure = useCallback(() => {
+    const el = rootRef.current;
+    if (!el) return;
+
+    // 요소의 너비를 참조
+    const width = el.clientWidth || el.offsetWidth;
+    // 썸네일 URL의 자연 비율을 이용해 높이 계산
+    const thumbUrl = video?.thumbs?.url3;
+    // ensure data-index is set so virtualizer can map element to item
+    if (virtualRow && el) el.dataset.index = String(virtualRow.index);
+
+    if (!thumbUrl) {
+      // poster가 없으면 기본 estimate로 측정
+      measureElement(el);
+      return;
+    }
+
+    const img = new Image();
+    // Use proxy to avoid CORS issues
+    const proxied = `/api/image-proxy?url=${encodeURIComponent(thumbUrl)}`;
+    img.src = proxied;
+    img.onload = () => {
+      const ratio = img.naturalHeight / img.naturalWidth || 9 / 16;
+      const height = Math.round(width * ratio);
+      el.style.height = `${height}px`;
+      // measure after layout has applied
+      requestAnimationFrame(() => measureElement(el));
+    };
+    img.onerror = () => {
+      // 실패 시 측정만 호출
+      measureElement(el);
+    };
+  }, [video, measureElement, virtualRow]);
+
+  useEffect(() => {
+    // initial 위치 스타일 적용
+    const el = rootRef.current;
+    if (el && virtualRow) {
+      el.style.position = "absolute";
+      el.style.top = "0";
+      el.style.left = "0";
+      el.style.width = "100%";
+      el.style.transform = `translateY(${virtualRow.start}px)`;
+    }
+
+    // poster 로드 후 높이 계산 및 측정
+    computeHeightAndMeasure();
+
+    // resize 시 재계산
+    const onResize = () => {
+      // remove inline height to recalc width-based height
+      if (el) el.style.height = "";
+      computeHeightAndMeasure();
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [virtualRow, computeHeightAndMeasure]);
+
   // Intersection Observer로 화면에 보이는지 감지
   useEffect(() => {
-    const currentRef = itemRef.current;
+    const currentRef = rootRef.current;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        // 화면에서 벗어나면 비디오 일시정지
-        if (!entry.isIntersecting && videoRef.current) {
-          videoRef.current.pause();
-        } else if (entry.isIntersecting && videoRef.current) {
-          videoRef.current.play().catch(() => {});
+        const vid = videoRef.current;
+        if (!entry.isIntersecting && vid) {
+          vid.pause();
+        } else if (entry.isIntersecting && vid) {
+          vid.play().catch(() => {});
         }
       },
       {
-        threshold: 0.5, // 50% 이상 보이면 재생
+        threshold: 0.5,
       }
     );
 
-    if (currentRef) {
-      observer.observe(currentRef);
-    }
-
+    if (currentRef) observer.observe(currentRef);
     return () => {
-      if (currentRef) {
-        observer.unobserve(currentRef);
-      }
-    };
-  }, [loadAndPlayVideo]);
-
-  // Listen for fullscreen changes
-  useEffect(() => {
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      if (currentRef) observer.unobserve(currentRef);
     };
   }, []);
 
@@ -196,46 +241,35 @@ const Item = ({ video }) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const width = rect.width;
-    const clickPosition = x / width; // 0 (left) to 1 (right)
+    const clickPosition = x / width;
 
-    // 클릭 카운트 증가
     clickCountRef.current += 1;
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
 
-    // Clear previous timer
-    if (clickTimerRef.current) {
-      clearTimeout(clickTimerRef.current);
-    }
-
-    // Wait 300ms to detect multiple clicks
     clickTimerRef.current = setTimeout(() => {
       const clickCount = clickCountRef.current;
-      clickCountRef.current = 0; // Reset
+      clickCountRef.current = 0;
 
       if (clickCount === 1) {
-        // Single click: seek forward/backward 5 seconds
         if (clickPosition < 0.5) {
-          // Left side: -5 seconds
           videoRef.current.currentTime = Math.max(
             0,
             videoRef.current.currentTime - 5
           );
         } else {
-          // Right side: +5 seconds
           videoRef.current.currentTime = Math.min(
             videoRef.current.duration,
             videoRef.current.currentTime + 5
           );
         }
       } else if (clickCount === 2) {
-        // Double click: toggle playback rate (1x <-> 2x)
         const newRate = videoRef.current.playbackRate === 1 ? 2 : 1;
         videoRef.current.playbackRate = newRate;
       } else if (clickCount >= 3) {
-        // Triple click: toggle fullscreen
         if (!document.fullscreenElement) {
-          videoRef.current.requestFullscreen().catch((err) => {
-            console.error("Fullscreen error:", err);
-          });
+          videoRef.current
+            .requestFullscreen()
+            .catch((err) => console.error("Fullscreen error:", err));
         } else {
           document.exitFullscreen();
         }
@@ -244,23 +278,22 @@ const Item = ({ video }) => {
   };
 
   return (
-    <div ref={itemRef} className="break-inside-avoid bg-white mb-4">
-      <div className="relative w-full cursor-pointer">
-        {/* video 태그에 poster 적용. */}
+    <div ref={rootRef} className="break-inside-avoid bg-white mb-4">
+      <div
+        className="relative w-full cursor-pointer"
+        onClick={handleVideoClick}
+      >
         <video
           ref={videoRef}
           className="w-full block"
           poster={video?.thumbs?.url3}
-          style={{ display: "block" }}
+          style={{ display: "block", width: "100%", height: "100%" }}
           playsInline
           loop
           muted
           preload="metadata"
           src={`/api/terabox-stream?fileId=${video?.fs_id}`}
-          onClick={handleVideoClick}
-          onLoadedData={() => {
-            setIsLoading(false);
-          }}
+          onLoadedData={() => setIsLoading(false)}
           onError={(e) => {
             console.error("Video playback error:", e);
             setIsLoading(false);
@@ -269,7 +302,6 @@ const Item = ({ video }) => {
           Your browser does not support the video tag.
         </video>
 
-        {/* 로딩 인디케이터 */}
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center">
             <Spinner className="w-12 h-12 text-white" />
