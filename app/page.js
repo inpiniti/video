@@ -313,7 +313,7 @@ const Item = ({ video }) => {
           playsInline
           loop
           muted
-          preload="none"
+          preload="metadata"
           src={streamingUrl || undefined}
           onClick={handleVideoClick}
           onLoadedData={() => {
