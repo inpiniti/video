@@ -332,7 +332,7 @@ Videos can be downloaded, compressed, and re-uploaded to cloud storage (TeraBox 
 - Supabase stores `terabox://123456789` format
 - On playback, client requests `/api/terabox-stream?fileId=123456789`
 - Server calls `getDownloadLink()` to get fresh temporary link
-- Video streams through our proxy with full Range/seek support
+- Video streams through
 
 **Benefits**:
 
@@ -421,3 +421,31 @@ For detailed documentation, see `UPLOAD_PIPELINE.md`.
 
 - estimateSize를 실제 데이터로 통계내어 동적으로 계산하거나, 초기 렌더 시 첫 N개의 항목을 측정하여 평균값을 사용하면 더 안정적입니다.
 - 현재 포커스 아이템을 중앙에 고정하는 스크롤 보정 기능을 추가할 수 있습니다.
+
+## TeraBox 스트림 API - Vercel Edge 캐시 전략
+
+홈페이지의 /api/terabox-stream 라우트에 Vercel Edge 캐시 전략을 적용했습니다. 목적은 엣지 노드에서 초기 바이트를 빠르게 제공해 비디오 재생 반응성을 향상시키는 것입니다.
+
+요약
+
+- 런타임: export const config = { runtime: 'edge' } 로 Edge Functions에서 실행됩니다.
+- Cache-Control: public, s-maxage=3300, stale-while-revalidate=60
+  - s-maxage=3300초(약 55분): TeraBox 임시 링크 만료를 고려해 1시간보다 짧게 설정
+  - stale-while-revalidate=60초: 엣지에서 빠르게 stale 응답을 주고 백그라운드에서 갱신 허용
+- Vary: Range 헤더를 설정하여 Range별 캐싱 분리 가능
+
+동작
+
+- 클라이언트 Range 요청이 들어오면 해당 Range를 TeraBox로 전달하고, TeraBox의 응답(206 또는 200)을 그대로 프록시합니다. 응답 헤더에는 Content-Range, Content-Length, Accept-Ranges가 포함됩니다.
+- 전체 컨텐츠(200)도 엣지에서 s-maxage 규칙에 따라 캐시됩니다.
+- fileId 파라미터 방식으로 fresh link를 생성하는 경우 엣지 캐시에 저장된 링크가 만료될 수 있으므로 주의가 필요합니다.
+
+권장
+
+- fileId 요청과 direct URL 요청에 대해 별도 TTL을 적용하는 것을 고려하세요.
+- 엣지 캐시된 링크가 만료되어 재생 실패가 발생하면 서버에서 fresh link를 재요청해 재시도하는 로직을 추가하면 안정성이 향상됩니다.
+- 초기 재생에서 주로 요청되는 앞부분 바이트(예: 0~1MB)가 캐시되도록 사용 패턴을 유도하면 사용자 경험이 크게 개선됩니다.
+
+배포 참고
+
+- 해당 라우트는 Vercel에 배포되어야 엣지 캐시의 이점을 활용할 수 있습니다. 배포 후 동작(캐시 적중률, 만료 에러 등)을 모니터링하고 필요시 s-maxage 값을 조정하세요.

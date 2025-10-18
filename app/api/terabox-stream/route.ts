@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTeraBoxStreamingLink } from "@/lib/teraboxUploader";
 
+export const config = {
+  runtime: "edge", // Vercel Edge에서 실행
+};
+
 // Proxy TeraBox download link for video streaming with Range support
-// This allows <video> tags to play TeraBox videos with seek support
-//
-// NEW: Supports both direct URL and fileId parameter
-// - url: direct TeraBox download link (temporary, may expire)
-// - fileId: TeraBox file ID (permanent, generates fresh link on-demand)
+// Edge 캐시 전략:
+// - s-maxage: 3300 (55분) => 1시간 미만으로 설정하여 TeraBox 링크 만료 위험을 줄임
+// - stale-while-revalidate: 60 => 엣지에서 빠르게 응답하되 백그라운드 갱신 허용
+// - Vary: Range => 범위별(부분 응답) 캐싱을 허용하도록 알려줌
+
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");
   const fileId = req.nextUrl.searchParams.get("fileId");
@@ -106,11 +110,17 @@ export async function GET(req: NextRequest) {
     const contentLength = response.headers.get("Content-Length");
     const acceptRanges = response.headers.get("Accept-Ranges") || "bytes";
 
-    // Stream the response
+    // Edge cache policy: 55분으로 설정 (TeraBox 링크 만료 고려)
+    const sMaxAge = 3300; // seconds ~55min
+    const staleWhileRevalidate = 60; // seconds
+
+    // 기본 응답 헤더
     const responseHeaders: Record<string, string> = {
       "Content-Type": contentType,
       "Accept-Ranges": acceptRanges,
-      "Cache-Control": "public, max-age=3600",
+      // Vercel Edge 캐싱 제어: 엣지에서 55분간 캐시, 짧은 기간 stale 허용
+      "Cache-Control": `public, s-maxage=${sMaxAge}, stale-while-revalidate=${staleWhileRevalidate}`,
+      Vary: "Range",
     };
 
     // Handle range requests (for seeking)
