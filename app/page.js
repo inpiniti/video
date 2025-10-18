@@ -145,7 +145,7 @@ const Content = ({ videos }) => {
   );
 };
 
-// Item: 기존 동작 유지, measure는 부모에서 수행하므로 별도 변경은 최소화
+// Item: 기존 동작 유지, 썸네일 이미지를 제거하고 video.poster 사용
 const Item = ({ video }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [streamingUrl, setStreamingUrl] = useState(null);
@@ -173,7 +173,7 @@ const Item = ({ video }) => {
     try {
       const proxyUrl = `/api/terabox-stream?fileId=${video.fs_id}`;
       setStreamingUrl(proxyUrl);
-      // 비디오가 로드되면 자동 재생
+      // 비디오가 로드되면 자동 재생 (autoPlay prop will handle it)
     } catch (error) {
       console.error("Error setting up streaming:", error);
       setIsLoading(false);
@@ -196,9 +196,7 @@ const Item = ({ video }) => {
           videoRef.current.pause();
           setIsPlaying(false);
         } else if (entry.isIntersecting && videoRef.current && streamingUrl) {
-          videoRef.current.play().catch(() => {
-            // 자동 재생 실패 시 무시 (브라우저 정책)
-          });
+          videoRef.current.play().catch(() => {});
           setIsPlaying(true);
         }
       },
@@ -293,6 +291,7 @@ const Item = ({ video }) => {
   };
 
   const handleImageClick = async () => {
+    // 이전에는 썸네일 클릭으로 로드했지만 이제 video.poster를 사용하므로 동일하게 로드 동작만 수행
     if (!streamingUrl) {
       loadAndPlayVideo();
     }
@@ -304,53 +303,41 @@ const Item = ({ video }) => {
         className="relative w-full cursor-pointer"
         onClick={handleImageClick}
       >
-        {/* 썸네일 이미지 - 항상 표시하고 비디오 로딩 중에도 보임 */}
-        {(!streamingUrl || isLoading || !videoLoaded) && (
-          <img
-            className="w-full block"
-            src={video.thumbs.url3}
-            alt="thumbnail"
-          />
-        )}
+        {/* video 태그에 poster 적용. streamingUrl이 없으면 poster가 보이고, streamingUrl이 설정되면 src로 로드되어 재생됩니다. */}
+        <video
+          ref={videoRef}
+          className="w-full block"
+          poster={video.thumbs?.url3}
+          style={{ display: "block" }}
+          autoPlay={!!streamingUrl}
+          playsInline
+          loop
+          muted
+          preload="none"
+          src={streamingUrl || undefined}
+          onClick={handleVideoClick}
+          onLoadedData={() => {
+            setVideoLoaded(true);
+            setIsLoading(false);
+            setIsPlaying(true);
+          }}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onError={(e) => {
+            console.error("Video playback error:", e);
+            setIsLoading(false);
+            setStreamingUrl(null);
+            setVideoLoaded(false);
+          }}
+        >
+          Your browser does not support the video tag.
+        </video>
 
         {/* 로딩 인디케이터 */}
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center">
             <Spinner className="w-12 h-12 text-white" />
           </div>
-        )}
-
-        {/* 비디오 엘리먼트 - 항상 렌더링하되, 로드 전까지는 숨김 */}
-        {streamingUrl && (
-          <video
-            ref={videoRef}
-            className="w-full block"
-            style={{
-              display: videoLoaded ? "block" : "none",
-            }}
-            autoPlay
-            playsInline
-            loop
-            muted
-            preload="auto"
-            src={streamingUrl}
-            onClick={handleVideoClick}
-            onLoadedData={() => {
-              setVideoLoaded(true);
-              setIsLoading(false);
-              setIsPlaying(true);
-            }}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-            onError={(e) => {
-              console.error("Video playback error:", e);
-              setIsLoading(false);
-              setStreamingUrl(null);
-              setVideoLoaded(false);
-            }}
-          >
-            Your browser does not support the video tag.
-          </video>
         )}
       </div>
       <div className="flex gap-2 p-2 items-start">
