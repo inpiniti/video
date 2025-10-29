@@ -124,130 +124,7 @@ const Content = ({ videos }) => {
   );
 };
 
-const ImageToVideo = ({ video, isToggled }) => {
-  const [imageSrc, setImageSrc] = useState(video?.thumbs?.icon || "");
-  const imgRef = useRef(null);
-  const videoRef = useRef(null);
-  const [videoPlaying, setVideoPlaying] = useState(false);
-
-  // Progressive upgrader: sequential preload + smooth swap for icon -> url3
-  useEffect(() => {
-    const highRes = video?.thumbs?.url3;
-    if (!highRes) return;
-
-    enqueueUpgrade(async () => {
-      await preloadImage(highRes);
-
-      if (!imgRef.current) {
-        setImageSrc(highRes);
-        return;
-      }
-
-      imgRef.current.dataset.fading = "out";
-      await wait(320);
-      setImageSrc(highRes);
-      if (imgRef.current) imgRef.current.dataset.fading = "in";
-      await wait(320);
-    });
-  }, [video?.thumbs?.url3]);
-
-  // When toggled on/off, manage video playback and overlay visibility
-  useEffect(() => {
-    const v = videoRef.current;
-    if (isToggled) {
-      setVideoPlaying(false);
-      if (v) {
-        // try to play; clicking the item should allow play on mobile
-        const p = v.play();
-        if (p && typeof p.then === "function") {
-          p.catch(() => {
-            // play may be rejected on some browsers; we'll rely on user interaction
-          });
-        }
-      }
-    } else {
-      // when toggled off, pause and reset playback; restore overlay
-      setVideoPlaying(false);
-      if (v) {
-        try {
-          v.pause();
-          v.currentTime = 0;
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-  }, [isToggled]);
-
-  // attach event listeners to detect when video actually starts playing
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-
-    const onPlaying = () => setVideoPlaying(true);
-    const onPause = () => setVideoPlaying(false);
-    const onEnded = () => setVideoPlaying(false);
-
-    v.addEventListener("playing", onPlaying);
-    v.addEventListener("play", onPlaying);
-    v.addEventListener("pause", onPause);
-    v.addEventListener("ended", onEnded);
-
-    return () => {
-      v.removeEventListener("playing", onPlaying);
-      v.removeEventListener("play", onPlaying);
-      v.removeEventListener("pause", onPause);
-      v.removeEventListener("ended", onEnded);
-    };
-  }, []);
-
-  return (
-    <div className="relative w-full">
-      {isToggled ? (
-        <div className="relative w-full">
-          <video
-            ref={videoRef}
-            className="w-full h-auto"
-            poster={video?.thumbs?.url3 || video?.thumbs?.icon}
-            controls
-            autoPlay
-            muted
-            loop
-            playsInline
-            {...{ "webkit-playsinline": "true" }}
-            src={`/api/terabox-stream?fileId=${video.fs_id}`}
-          >
-            Your browser does not support the video tag.
-          </video>
-
-          {/* custom overlay: stays visible until videoPlaying === true */}
-          <img
-            ref={imgRef}
-            src={imageSrc}
-            alt={video?.server_filename || "Image"}
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 pointer-events-none ${
-              videoPlaying ? "opacity-0" : "opacity-100"
-            }`}
-          />
-        </div>
-      ) : (
-        <img
-          ref={imgRef}
-          src={imageSrc}
-          alt={video?.server_filename || "Image"}
-          className={`transition-opacity duration-300 w-full`}
-          onLoad={(e) => {
-            if (e.currentTarget.dataset.fading === "out") {
-              e.currentTarget.style.opacity = "0";
-            } else {
-              e.currentTarget.style.opacity = "1";
-            }
-          }}
-        />
-      )}
-    </div>
-  );
-};
+// Item: fixed-height, memoized to avoid re-renders causing flicker
 const Item = ({ video, isToggled, onToggle }) => {
   //const videoRef = useRef(null);
 
@@ -282,6 +159,81 @@ const Item = ({ video, isToggled, onToggle }) => {
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+const ImageToVideo = ({ video, isToggled }) => {
+  const [imageSrc, setImageSrc] = useState(video?.thumbs?.icon || "");
+  const imgRef = useRef(null);
+  // Progressive upgrader: instead of swapping on-scroll (which looked jumpy),
+  // enqueue this image for a sequential upgrade to url3. The upgrader will
+  // preload high-res images one-by-one and perform a small fade to avoid flicker.
+  useEffect(() => {
+    const highRes = video?.thumbs?.url3;
+    if (!highRes) return;
+
+    // Enqueue upgrade: push a function that will perform preload + smooth swap
+    enqueueUpgrade(async () => {
+      // Preload high-res
+      await preloadImage(highRes);
+
+      // Smooth swap: fade out, replace src, fade in
+      if (!imgRef.current) {
+        // if element unmounted, just set state
+        setImageSrc(highRes);
+        return;
+      }
+
+      // Trigger fade-out by setting a data attribute; we'll use CSS class below
+      imgRef.current.dataset.fading = "out";
+
+      // wait for the fade-out duration (match Tailwind duration-300 => 300ms)
+      await wait(320);
+
+      // replace src
+      setImageSrc(highRes);
+
+      // fade back in
+      if (imgRef.current) imgRef.current.dataset.fading = "in";
+      await wait(320);
+    });
+  }, [video?.thumbs?.url3]);
+
+  return (
+    <div>
+      {isToggled ? (
+        <video
+          className="w-full"
+          poster={video?.thumbs?.url3 || video?.thumbs?.icon}
+          controls
+          autoPlay
+          muted
+          loop
+          playsInline
+          webkit-playsinline="true"
+          src={`/api/terabox-stream?fileId=${video.fs_id}`}
+        >
+          Your browser does not support the video tag.
+        </video>
+      ) : (
+        <img
+          ref={imgRef}
+          src={imageSrc}
+          alt={video?.server_filename || "Image"}
+          className={`transition-opacity duration-300 w-full`}
+          // Use a data attribute to control opacity (out -> 0, in/undefined -> 1)
+          onLoad={(e) => {
+            // Ensure final state after load
+            if (e.currentTarget.dataset.fading === "out") {
+              // keep it hidden until we set new src
+              e.currentTarget.style.opacity = "0";
+            } else {
+              e.currentTarget.style.opacity = "1";
+            }
+          }}
+        />
+      )}
     </div>
   );
 };
