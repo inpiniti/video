@@ -210,6 +210,7 @@ const ImageToVideo = ({ video, isToggled }) => {
           autoPlay
           muted
           loop
+          playsInline
           webkit-playsinline="true"
           src={`/api/terabox-stream?fileId=${video.fs_id}`}
         >
