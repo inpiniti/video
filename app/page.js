@@ -104,6 +104,7 @@ const Header = ({ totalSizeGB }) => {
 
 // Content: tanstack virtual 적용 (fixed-height items to avoid layout thrash)
 const Content = ({ videos }) => {
+  const [toggleIndex, setToggleIndex] = useState(null);
   return (
     <div className="pt-16 sm:px-2 mx-auto">
       <div
@@ -111,7 +112,12 @@ const Content = ({ videos }) => {
         style={{ height: "calc(100vh - 4rem)", overflowY: "auto" }}
       >
         {videos.map((video, index) => (
-          <Item video={video} key={index} />
+          <Item
+            video={video}
+            key={index}
+            isToggled={toggleIndex === index}
+            onToggle={() => setToggleIndex(index)}
+          />
         ))}
       </div>
     </div>
@@ -119,13 +125,13 @@ const Content = ({ videos }) => {
 };
 
 // Item: fixed-height, memoized to avoid re-renders causing flicker
-const Item = ({ video }) => {
+const Item = ({ video, isToggled, onToggle }) => {
   //const videoRef = useRef(null);
 
   return (
     <div className="bg-white mb-4">
-      <div className="cursor-pointer">
-        <ImageToVideo video={video} />
+      <div className="cursor-pointer" onClick={onToggle}>
+        <ImageToVideo video={video} isToggled={isToggled} />
       </div>
       <div
         className="flex gap-2 p-2 items-start justify-between"
@@ -157,8 +163,7 @@ const Item = ({ video }) => {
   );
 };
 
-const ImageToVideo = ({ video }) => {
-  const [toggle, setToggle] = useState(false);
+const ImageToVideo = ({ video, isToggled }) => {
   const [imageSrc, setImageSrc] = useState(video?.thumbs?.icon || "");
   const imgRef = useRef(null);
   // Progressive upgrader: instead of swapping on-scroll (which looked jumpy),
@@ -196,8 +201,8 @@ const ImageToVideo = ({ video }) => {
   }, [video?.thumbs?.url3]);
 
   return (
-    <div onClick={() => setToggle(!toggle)}>
-      {toggle ? (
+    <div>
+      {isToggled ? (
         <video
           className="w-full"
           poster={video?.thumbs?.url3 || video?.thumbs?.icon}
