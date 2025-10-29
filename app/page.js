@@ -210,6 +210,7 @@ const ImageToVideo = ({ video, isToggled }) => {
           autoPlay
           muted
           loop
+          webkit-playsinline="true"
           src={`/api/terabox-stream?fileId=${video.fs_id}`}
         >
           Your browser does not support the video tag.
