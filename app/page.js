@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useVideoStore } from "@/lib/useVideoStore";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 
 const Page = () => {
-  const [videos, setVideos] = useState([]);
+  const videos = useVideoStore((s) => s.videos);
+  const setVideos = useVideoStore((s) => s.setVideos);
 
   useEffect(() => {
     const fetchVideos = async () => {
@@ -36,7 +37,7 @@ const Page = () => {
     };
 
     fetchVideos();
-  }, []);
+  }, [setVideos]);
 
   // Calculate total size in GB
   const totalSizeGB =
@@ -101,246 +102,30 @@ const Header = ({ totalSizeGB }) => {
   );
 };
 
-// Content: tanstack virtual 적용 (variable heights, overscan: 5)
+// Content: tanstack virtual 적용 (fixed-height items to avoid layout thrash)
 const Content = ({ videos }) => {
-  const parentRef = useRef(null);
-
-  const [itemHeight, setItemHeight] = useState(0);
-
-  useEffect(() => {
-    const compute = () => setItemHeight(window.innerHeight - 64); // h-16 (4rem -> 64px)
-    compute();
-    window.addEventListener("resize", compute);
-    return () => window.removeEventListener("resize", compute);
-  }, []);
-
-  const rowVirtualizer = useVirtualizer({
-    count: videos.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => itemHeight || 320, // fixed per-device height
-    overscan: 5,
-  });
-
   return (
     <div className="pt-16 sm:px-2 mx-auto">
       <div
-        ref={parentRef}
         className="w-full mx-auto"
         style={{ height: "calc(100vh - 4rem)", overflowY: "auto" }}
       >
-        <div
-          style={{
-            height: `${rowVirtualizer.getTotalSize()}px`,
-            position: "relative",
-          }}
-        >
-          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const video = videos[virtualRow.index];
-            if (!video) return null;
-            return (
-              <Item
-                key={virtualRow.key}
-                video={video}
-                virtualRow={virtualRow}
-                itemHeight={itemHeight}
-                measureElement={(el) => {
-                  try {
-                    rowVirtualizer.measureElement(el);
-                  } catch {
-                    // ignore
-                  }
-                }}
-              />
-            );
-          })}
-        </div>
+        {videos.map((video, index) => (
+          <Item video={video} key={index} />
+        ))}
       </div>
     </div>
   );
 };
 
-// Item: poster 이미지 로드 기반으로 높이 계산하고 virtualizer에 측정 요청
-const Item = ({ video, virtualRow, measureElement, itemHeight }) => {
-  const rootRef = useRef(null);
-  const videoRef = useRef(null);
-  const clickCountRef = useRef(0);
-  const clickTimerRef = useRef(null);
-  const [streamingUrl, setStreamingUrl] = useState(null);
-
-  // 계산 및 측정 함수
-  // const computeHeightAndMeasure = useCallback(() => {
-  //   const el = rootRef.current;
-  //   if (!el) return;
-
-  //   // 요소의 너비를 참조
-  //   const width = el.clientWidth || el.offsetWidth;
-  //   // 썸네일 URL의 자연 비율을 이용해 높이 계산
-  //   const thumbUrl = video?.thumbs?.url3;
-  //   // ensure data-index is set so virtualizer can map element to item
-  //   if (virtualRow && el) el.dataset.index = String(virtualRow.index);
-
-  //   if (!thumbUrl) {
-  //     // poster가 없으면 기본 estimate로 측정
-  //     measureElement(el);
-  //     return;
-  //   }
-
-  //   const img = new Image();
-  //   // Use proxy to avoid CORS issues
-  //   img.src = proxied;
-  //   img.onload = () => {
-  //     const ratio = img.naturalHeight / img.naturalWidth || 9 / 16;
-  //     const height = Math.round(width * ratio);
-  //     el.style.height = `${height}px`;
-  //     // measure after layout has applied
-  //     requestAnimationFrame(() => measureElement(el));
-  //   };
-  //   img.onerror = () => {
-  //     // 실패 시 측정만 호출
-  //     measureElement(el);
-  //   };
-  // }, [video, measureElement, virtualRow]);
-
-  // useEffect(() => {
-  //   // initial 위치 스타일 적용
-  //   const el = rootRef.current;
-  //   if (el && virtualRow) {
-  //     el.style.position = "absolute";
-  //     el.style.top = "0";
-  //     el.style.left = "0";
-  //     el.style.width = "100%";
-  //     el.style.height = itemHeight ? `${itemHeight}px` : "auto";
-  //     el.style.transform = `translateY(${virtualRow.start}px)`;
-  //     el.style.display = "flex";
-  //     el.style.flexDirection = "column";
-  //   }
-
-  //   // measure for fixed height layout (still call compute to set intrinsic height if needed)
-  //   //computeHeightAndMeasure();
-
-  //   // resize 시 재계산
-  //   const onResize = () => {
-  //     // remove inline height to recalc width-based height
-  //     if (el) el.style.height = "";
-  //     //computeHeightAndMeasure();
-  //   };
-  //   window.addEventListener("resize", onResize);
-  //   return () => window.removeEventListener("resize", onResize);
-  // }, [virtualRow, itemHeight]);
-
-  // Intersection Observer로 화면에 보이는지 감지
-  useEffect(() => {
-    const currentRef = rootRef.current;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        const vid = videoRef.current;
-        if (!entry.isIntersecting && vid) {
-          // leave: pause and clear src to stop network
-          try {
-            vid.pause();
-          } catch {}
-          setStreamingUrl(null);
-        } else if (entry.isIntersecting && vid) {
-          // enter: set src and try to play
-          if (video?.fs_id) {
-            setStreamingUrl(`/api/terabox-stream?fileId=${video.fs_id}`);
-            // play attempt after src set
-            setTimeout(() => vid.play().catch(() => {}), 0);
-          }
-        }
-      },
-      {
-        threshold: 0.5,
-      }
-    );
-
-    if (currentRef) observer.observe(currentRef);
-    return () => {
-      if (currentRef) observer.unobserve(currentRef);
-      // cleanup streamingUrl when unmounting
-      setStreamingUrl(null);
-    };
-  }, [video?.fs_id]);
-
-  const handleVideoClick = async (e) => {
-    if (!videoRef.current) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const width = rect.width;
-    const clickPosition = x / width;
-
-    clickCountRef.current += 1;
-    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-
-    clickTimerRef.current = setTimeout(() => {
-      const clickCount = clickCountRef.current;
-      clickCountRef.current = 0;
-
-      if (clickCount === 1) {
-        if (clickPosition < 0.5) {
-          videoRef.current.currentTime = Math.max(
-            0,
-            videoRef.current.currentTime - 5
-          );
-        } else {
-          videoRef.current.currentTime = Math.min(
-            videoRef.current.duration,
-            videoRef.current.currentTime + 5
-          );
-        }
-      } else if (clickCount === 2) {
-        const newRate = videoRef.current.playbackRate === 1 ? 2 : 1;
-        videoRef.current.playbackRate = newRate;
-      } else if (clickCount >= 3) {
-        if (!document.fullscreenElement) {
-          videoRef.current
-            .requestFullscreen()
-            .catch((err) => console.error("Fullscreen error:", err));
-        } else {
-          document.exitFullscreen();
-        }
-      }
-    }, 300);
-  };
+// Item: fixed-height, memoized to avoid re-renders causing flicker
+const Item = ({ video }) => {
+  //const videoRef = useRef(null);
 
   return (
-    <div
-      ref={rootRef}
-      className={`bg-white mb-4`}
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: itemHeight ? `${itemHeight}px` : "auto",
-        transform: virtualRow ? `translateY(${virtualRow.start}px)` : undefined,
-      }}
-    >
-      <div
-        className="relative w-full cursor-pointer flex-1 flex items-center justify-center"
-        onClick={handleVideoClick}
-        style={{ flex: 1 }}
-      >
-        <video
-          ref={videoRef}
-          className="max-w-full max-h-full"
-          poster={video?.thumbs?.url3}
-          style={{
-            display: "block",
-            maxWidth: "100%",
-            maxHeight: "100%",
-            objectFit: "contain",
-          }}
-          playsInline
-          loop
-          muted
-          preload="metadata"
-          src={streamingUrl}
-        >
-          Your browser does not support the video tag.
-        </video>
+    <div className="bg-white mb-4">
+      <div className="cursor-pointer">
+        <ImageToVideo video={video} />
       </div>
       <div
         className="flex gap-2 p-2 items-start justify-between"
@@ -368,6 +153,37 @@ const Item = ({ video, virtualRow, measureElement, itemHeight }) => {
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+const ImageToVideo = ({ video }) => {
+  const [toggle, setToggle] = useState(false);
+
+  // 스크롤로 화면에 가까워 졋을때
+  // video?.thumbs?.icon 을 video?.thumbs?.url3 으로 변경
+
+  return (
+    <div onClick={() => setToggle(!toggle)}>
+      {toggle ? (
+        <video
+          className="w-full"
+          poster={video?.thumbs?.url3}
+          controls
+          autoPlay
+          muted
+          loop
+          src={`/api/terabox-stream?fileId=${video.fs_id}`}
+        >
+          Your browser does not support the video tag.
+        </video>
+      ) : (
+        <img
+          src={video?.thumbs?.icon}
+          alt="Image"
+          className={`transition-opacity duration-300 w-full`}
+        />
+      )}
     </div>
   );
 };
