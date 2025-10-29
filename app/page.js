@@ -159,16 +159,48 @@ const Item = ({ video }) => {
 
 const ImageToVideo = ({ video }) => {
   const [toggle, setToggle] = useState(false);
+  const [imageSrc, setImageSrc] = useState(video?.thumbs?.icon || "");
+  const imgRef = useRef(null);
+  // Progressive upgrader: instead of swapping on-scroll (which looked jumpy),
+  // enqueue this image for a sequential upgrade to url3. The upgrader will
+  // preload high-res images one-by-one and perform a small fade to avoid flicker.
+  useEffect(() => {
+    const highRes = video?.thumbs?.url3;
+    if (!highRes) return;
 
-  // 스크롤로 화면에 가까워 졋을때
-  // video?.thumbs?.icon 을 video?.thumbs?.url3 으로 변경
+    // Enqueue upgrade: push a function that will perform preload + smooth swap
+    enqueueUpgrade(async () => {
+      // Preload high-res
+      await preloadImage(highRes);
+
+      // Smooth swap: fade out, replace src, fade in
+      if (!imgRef.current) {
+        // if element unmounted, just set state
+        setImageSrc(highRes);
+        return;
+      }
+
+      // Trigger fade-out by setting a data attribute; we'll use CSS class below
+      imgRef.current.dataset.fading = "out";
+
+      // wait for the fade-out duration (match Tailwind duration-300 => 300ms)
+      await wait(320);
+
+      // replace src
+      setImageSrc(highRes);
+
+      // fade back in
+      if (imgRef.current) imgRef.current.dataset.fading = "in";
+      await wait(320);
+    });
+  }, [video?.thumbs?.url3]);
 
   return (
     <div onClick={() => setToggle(!toggle)}>
       {toggle ? (
         <video
           className="w-full"
-          poster={video?.thumbs?.url3}
+          poster={video?.thumbs?.url3 || video?.thumbs?.icon}
           controls
           autoPlay
           muted
@@ -179,11 +211,68 @@ const ImageToVideo = ({ video }) => {
         </video>
       ) : (
         <img
-          src={video?.thumbs?.icon}
-          alt="Image"
+          ref={imgRef}
+          src={imageSrc}
+          alt={video?.server_filename || "Image"}
           className={`transition-opacity duration-300 w-full`}
+          // Use a data attribute to control opacity (out -> 0, in/undefined -> 1)
+          onLoad={(e) => {
+            // Ensure final state after load
+            if (e.currentTarget.dataset.fading === "out") {
+              // keep it hidden until we set new src
+              e.currentTarget.style.opacity = "0";
+            } else {
+              e.currentTarget.style.opacity = "1";
+            }
+          }}
         />
       )}
     </div>
   );
 };
+
+// --- Helper: sequential upgrader queue ---
+const upgradeQueue = [];
+let upgrading = false;
+
+function enqueueUpgrade(task) {
+  upgradeQueue.push(task);
+  if (!upgrading) processQueue();
+}
+
+async function processQueue() {
+  upgrading = true;
+  while (upgradeQueue.length > 0) {
+    const task = upgradeQueue.shift();
+    try {
+      // run task during idle if possible to reduce main-thread impact
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        await new Promise((res) =>
+          window.requestIdleCallback(() => res(), { timeout: 500 })
+        );
+      } else {
+        // small pause to avoid burst network
+        await wait(50);
+      }
+      await task();
+      // small gap between upgrades to avoid simultaneous network spikes
+      await wait(120);
+    } catch {
+      // ignore task errors and continue
+    }
+  }
+  upgrading = false;
+}
+
+function preloadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve();
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function wait(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
