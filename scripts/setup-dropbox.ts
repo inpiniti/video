@@ -72,7 +72,7 @@ async function setup() {
 
         try {
             const response = await dbxAuth.getAccessTokenFromCode(undefined as any, code.trim());
-            const refreshToken = response.result.refresh_token;
+            const refreshToken = (response.result as any).refresh_token;
 
             if (!refreshToken) {
                 console.error('Error: No refresh token received. Make sure you approved "offline" access.');

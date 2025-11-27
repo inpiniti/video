@@ -24,7 +24,7 @@ async function testPostDetail(postUrl: string, postId: number) {
             const images = [];
             const videos = [];
 
-            const fixUrl = (url) => {
+            const fixUrl = (url: string | null): string | null => {
                 if (!url) return null;
                 if (url.startsWith('http')) return url;
                 if (url.startsWith('//')) return `https:${url}`;

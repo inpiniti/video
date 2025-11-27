@@ -336,7 +336,7 @@ async function main() {
                 response.data.pipe(writer);
 
                 await new Promise((resolve, reject) => {
-                    writer.on('finish', resolve);
+                    writer.on('finish', () => resolve(null));
                     writer.on('error', reject);
                 });
                 downloaded = true;
@@ -360,7 +360,7 @@ async function main() {
                                         filename: thumbFilename,
                                         size: '320x?'
                                     })
-                                    .on('end', resolve)
+                                    .on('end', () => resolve(null))
                                     .on('error', reject);
                             });
                             item.localThumbnail = thumbFilename; // Store filename only, relative to images dir

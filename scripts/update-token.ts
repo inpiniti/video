@@ -18,7 +18,7 @@ async function updateToken() {
     try {
         console.log('Exchanging code for token...');
         const response = await dbxAuth.getAccessTokenFromCode(undefined as any, code);
-        const refreshToken = response.result.refresh_token;
+        const refreshToken = (response.result as any).refresh_token;
 
         if (!refreshToken) {
             console.error('Failed to get refresh token. Did you allow offline access?');
