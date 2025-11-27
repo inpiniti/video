@@ -6,15 +6,38 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "download": "tsx scripts/download.ts",
+    "generate-thumbs": "tsx scripts/generate-thumbs.ts",
+    "redownload-zero": "tsx scripts/redownload-zero.ts",
+    "fix-thumbnails": "tsx scripts/fix-missing-thumbnails.ts",
+    "remove-empty": "tsx scripts/remove-empty-posts.ts"
   },
   "dependencies": {
+    "axios": "^1.13.2",
+    "cheerio": "^1.1.2",
+    "clsx": "^2.1.1",
+    "dropbox": "^10.34.0",
+    "ffmpeg-static": "^5.3.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "framer-motion": "^12.23.24",
+    "fs-extra": "^11.3.2",
+    "lucide-react": "^0.555.0",
+    "mime": "^4.1.0",
     "next": "16.0.4",
+    "p-limit": "^7.2.0",
+    "puppeteer": "^24.31.0",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "react-intersection-observer": "^10.0.0",
+    "react-masonry-css": "^1.0.16",
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/fluent-ffmpeg": "^2.1.28",
+    "@types/fs-extra": "^11.0.4",
+    "@types/mime": "^3.0.4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -22,6 +45,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.0.4",
     "tailwindcss": "^4",
+    "tsx": "^4.20.6",
     "typescript": "^5"
   }
 }

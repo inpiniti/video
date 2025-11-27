@@ -1,0 +1,16 @@
+{
+  "accounts": [
+    {
+      "name": "drop1",
+      "appKey": "jtesarmiet6bh4a",
+      "appSecret": "sc8ftv3anutsnxz",
+      "refreshToken": "hEi27xVQpygAAAAAAAAAAUJ6RrHrHnlJ3ujO_8_tyS1M0vQ9xmeLT5jsB4EsHLRf"
+    },
+    {
+      "name": "drop2",
+      "appKey": "w2nzwmy3m8jjyzr",
+      "appSecret": "12muh8k5x98izbb",
+      "refreshToken": "Oku1XIaev10AAAAAAAAAAXFPHj9LdKMaEiJ0FmGsQnXs144NJkx2LUtJ6KSQx24i"
+    }
+  ]
+}
