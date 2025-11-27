@@ -20,11 +20,13 @@ const limit = pLimit(CONCURRENCY);
 
 interface Post {
     id: number;
+    thumbnail: string;
     imgs?: string[];
     videos?: string[];
     dropboxImgs?: string[];
     dropboxVideos?: string[];
     dropboxAccount?: string;
+    localThumbnail?: string;
 }
 
 interface DropboxAccount {
@@ -139,6 +141,50 @@ async function processAndUpload() {
             // Initialize arrays if missing
             if (!post.dropboxImgs) post.dropboxImgs = [];
             if (!post.dropboxVideos) post.dropboxVideos = [];
+
+            // Process Thumbnail (for video posts with local thumbnail)
+            if (post.thumbnail && post.thumbnail.startsWith('/api/media/images')) {
+                const thumbnailFilename = path.basename(post.thumbnail);
+                const localThumbPath = path.join(PICTURES_DIR, thumbnailFilename);
+
+                // Check if thumbnail exists in any Dropbox account
+                let foundAccount = dbxAccounts.find(acc => acc.existingFiles.has(thumbnailFilename));
+
+                if (foundAccount) {
+                    console.log(`[Skip Upload] ${thumbnailFilename} found in ${foundAccount.name}`);
+                    const link = await getSharedLink(foundAccount, `/${thumbnailFilename}`);
+                    post.thumbnail = link;
+                    changed = true;
+                } else if (await fs.pathExists(localThumbPath)) {
+                    // Need to upload thumbnail
+                    dbxAccounts.sort((a, b) => b.freeSpace - a.freeSpace);
+                    const targetAccount = dbxAccounts[0];
+
+                    if (targetAccount.freeSpace < 10 * 1024 * 1024) {
+                        console.error(`[Full] Cannot upload ${thumbnailFilename}`);
+                    } else {
+                        const tempPath = path.join(TEMP_DIR, thumbnailFilename);
+                        try {
+                            console.log(`[Compress Thumbnail] ${thumbnailFilename}`);
+                            // Compress thumbnail to WebP
+                            const webpFilename = thumbnailFilename.replace(/\.(jpg|jpeg|png)$/i, '.webp');
+                            const tempWebpPath = path.join(TEMP_DIR, webpFilename);
+                            await convertToWebP(localThumbPath, tempWebpPath);
+
+                            console.log(`[Upload Thumbnail] ${webpFilename} to ${targetAccount.name}`);
+                            const link = await uploadToDropbox(targetAccount, tempWebpPath, `/${webpFilename}`);
+
+                            post.thumbnail = link;
+                            targetAccount.existingFiles.add(webpFilename);
+                            targetAccount.freeSpace -= (await fs.stat(tempWebpPath)).size;
+                            await fs.remove(tempWebpPath);
+                            changed = true;
+                        } catch (err) {
+                            console.error(`Error processing thumbnail ${thumbnailFilename}:`, err);
+                        }
+                    }
+                }
+            }
 
             // Process Images
             if (post.imgs && post.imgs.length > 0) {
