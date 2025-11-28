@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import PostCard from "./components/PostCard";
 import PostPreview from "./components/PostPreview";
-import { Loader2, Shuffle } from "lucide-react";
+import { Loader2, Shuffle, Video, Image as ImageIcon } from "lucide-react";
 
 interface Post {
   id: number;
@@ -24,6 +24,8 @@ export default function Home() {
   const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
   const [isShuffled, setIsShuffled] = useState(false);
   const [showHeader, setShowHeader] = useState(true);
+  const [showVideos, setShowVideos] = useState(true);
+  const [showImages, setShowImages] = useState(true);
   const lastScrollY = useRef(0);
   const hasRestoredScroll = useRef(false);
   const originalPosts = useRef<Post[]>([]);
@@ -75,6 +77,46 @@ export default function Home() {
     // Scroll to top when shuffling
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+
+  const toggleVideoFilter = () => {
+    if (showVideos && !showImages) {
+      // If images are hidden and we try to hide videos, show images (radio behavior)
+      setShowVideos(false);
+      setShowImages(true);
+    } else if (showVideos && showImages) {
+      setShowVideos(false);
+    } else {
+      setShowVideos(true);
+    }
+  };
+
+  const toggleImageFilter = () => {
+    if (showImages && !showVideos) {
+      // If videos are hidden and we try to hide images, show videos (radio behavior)
+      setShowImages(false);
+      setShowVideos(true);
+    } else if (showImages && showVideos) {
+      setShowImages(false);
+    } else {
+      setShowImages(true);
+    }
+  };
+
+  const filteredPosts = useMemo(() => {
+    return posts.filter(post => {
+      const hasVideo = (post.videos && post.videos.length > 0) || (post.dropboxVideos && post.dropboxVideos.length > 0);
+      const hasImage = (post.imgs && post.imgs.length > 0) || (post.dropboxImgs && post.dropboxImgs.length > 0);
+
+      // If post has both, show if either filter is active
+      if (hasVideo && hasImage) return showVideos || showImages;
+      // If post has only video, show if video filter is active
+      if (hasVideo) return showVideos;
+      // If post has only image, show if image filter is active
+      if (hasImage) return showImages;
+
+      return false;
+    });
+  }, [posts, showVideos, showImages]);
 
   // Handle header visibility on scroll
   useEffect(() => {
@@ -149,7 +191,7 @@ export default function Home() {
 
   // Restore scroll position logic
   useEffect(() => {
-    if (posts.length === 0) return;
+    if (filteredPosts.length === 0) return;
     if (hasRestoredScroll.current) return;
 
     const savedScrollStr = sessionStorage.getItem("_gallery_scroll");
@@ -160,7 +202,7 @@ export default function Home() {
 
     const checkAndRestore = () => {
       // Calculate expected total height
-      const totalRows = Math.ceil(posts.length / columns);
+      const totalRows = Math.ceil(filteredPosts.length / columns);
       const totalHeight = totalRows * itemHeight;
 
       // If content is tall enough
@@ -203,7 +245,7 @@ export default function Home() {
       resizeObserver.disconnect();
       timeouts.forEach(clearTimeout);
     };
-  }, [posts, columns, itemHeight]);
+  }, [filteredPosts, columns, itemHeight]);
 
   // Run on mount: load all posts
   useEffect(() => {
@@ -278,17 +320,33 @@ export default function Home() {
               Gallery
             </h1>
             <p className="text-zinc-400 text-sm mt-1">
-              Collection of {posts.length} items {isShuffled && '(Shuffled)'}
+              Collection of {filteredPosts.length} items {isShuffled && '(Shuffled)'}
             </p>
           </div>
-          <button
-            onClick={shufflePosts}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-white transition-colors"
-            title="Shuffle posts"
-          >
-            <Shuffle size={18} className={isShuffled ? 'text-blue-400' : ''} />
-            <span className="hidden sm:inline">Shuffle</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleVideoFilter}
+              className={`p-2 rounded-lg transition-colors ${showVideos ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
+              title="Toggle Videos"
+            >
+              <Video size={18} />
+            </button>
+            <button
+              onClick={toggleImageFilter}
+              className={`p-2 rounded-lg transition-colors ${showImages ? 'bg-green-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
+              title="Toggle Images"
+            >
+              <ImageIcon size={18} />
+            </button>
+            <button
+              onClick={shufflePosts}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-white transition-colors"
+              title="Shuffle posts"
+            >
+              <Shuffle size={18} className={isShuffled ? 'text-blue-400' : ''} />
+              <span className="hidden sm:inline">Shuffle</span>
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 md:p-8 pt-0">
@@ -309,9 +367,9 @@ export default function Home() {
             )}
 
             {!loading &&
-              posts.length > 0 &&
+              filteredPosts.length > 0 &&
               (() => {
-                const totalItems = posts.length;
+                const totalItems = filteredPosts.length;
                 const totalRows = Math.ceil(totalItems / columns);
                 const totalHeight = totalRows * itemHeight;
 
@@ -327,7 +385,7 @@ export default function Home() {
                 const startIndex = startRow * columns;
                 const endIndex = Math.min(totalItems, endRow * columns);
 
-                const visibleItems = posts.slice(startIndex, endIndex);
+                const visibleItems = filteredPosts.slice(startIndex, endIndex);
                 const topOffset = startRow * itemHeight;
 
                 return (
@@ -366,15 +424,15 @@ export default function Home() {
 
       {/* Preview Pane */}
       {selectedPost && (() => {
-        const currentIndex = posts.findIndex(p => p.id === selectedPostId);
+        const currentIndex = filteredPosts.findIndex(p => p.id === selectedPostId);
         const hasPrevious = currentIndex > 0;
-        const hasNext = currentIndex < posts.length - 1;
+        const hasNext = currentIndex < filteredPosts.length - 1;
 
         const handleNavigate = (direction: 'prev' | 'next') => {
           if (direction === 'prev' && hasPrevious) {
-            setSelectedPostId(posts[currentIndex - 1].id);
+            setSelectedPostId(filteredPosts[currentIndex - 1].id);
           } else if (direction === 'next' && hasNext) {
-            setSelectedPostId(posts[currentIndex + 1].id);
+            setSelectedPostId(filteredPosts[currentIndex + 1].id);
           }
         };
 
