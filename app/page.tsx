@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import PostCard from "./components/PostCard";
 import PostPreview from "./components/PostPreview";
-import { Loader2 } from "lucide-react";
+import { Loader2, Shuffle } from "lucide-react";
 
 interface Post {
   id: number;
@@ -22,7 +22,11 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
+  const [isShuffled, setIsShuffled] = useState(false);
+  const [showHeader, setShowHeader] = useState(true);
+  const lastScrollY = useRef(0);
   const hasRestoredScroll = useRef(false);
+  const originalPosts = useRef<Post[]>([]);
 
   // Virtualization state
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -41,13 +45,56 @@ export default function Home() {
       // Request a very large limit so API returns all items
       const res = await fetch(`/api/posts?page=1&limit=999999`);
       const data = await res.json();
-      setPosts(data.data || []);
+      const fetchedPosts = data.data || [];
+      originalPosts.current = fetchedPosts;
+
+      // Shuffle immediately on initial load
+      const shuffled = [...fetchedPosts];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      setPosts(shuffled);
+      setIsShuffled(true);
     } catch (err) {
       console.error("Failed to load posts:", err);
     } finally {
       setLoading(false);
     }
   }
+
+  function shufflePosts() {
+    // Always shuffle from original order to ensure randomness
+    const shuffled = [...originalPosts.current];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setPosts(shuffled);
+    setIsShuffled(true);
+    // Scroll to top when shuffling
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Handle header visibility on scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+
+      // Show header if at top or scrolling up
+      if (currentScrollY < 50 || currentScrollY < lastScrollY.current) {
+        setShowHeader(true);
+      } else if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
+        // Hide header if scrolling down and not at top
+        setShowHeader(false);
+      }
+
+      lastScrollY.current = currentScrollY;
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Save scroll position on scroll
   // IMPORTANT: Ignore scroll resets to 0 that happen during navigation
@@ -221,19 +268,30 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-black text-white flex">
       {/* Main Content Area */}
-      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${selectedPostId ? 'mr-[40%]' : ''}`}>
-        <header className="p-4 md:p-8 mb-4 flex justify-between items-center shrink-0">
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${selectedPostId ? 'md:mr-[40%]' : ''}`}>
+        <header
+          className={`sticky top-0 z-40 transition-transform duration-300 ${showHeader ? 'translate-y-0' : '-translate-y-full'
+            } bg-black/90 backdrop-blur-sm border-b border-zinc-800/50 px-4 py-4 md:p-8 mb-4 flex justify-between items-center shrink-0`}
+        >
           <div>
             <h1 className="text-3xl font-bold bg-linear-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
               Gallery
             </h1>
             <p className="text-zinc-400 text-sm mt-1">
-              Collection of {posts.length} items
+              Collection of {posts.length} items {isShuffled && '(Shuffled)'}
             </p>
           </div>
+          <button
+            onClick={shufflePosts}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-white transition-colors"
+            title="Shuffle posts"
+          >
+            <Shuffle size={18} className={isShuffled ? 'text-blue-400' : ''} />
+            <span className="hidden sm:inline">Shuffle</span>
+          </button>
         </header>
 
-        <div className="flex-1 p-4 md:p-8 pt-0">
+        <div className="flex-1 md:p-8 pt-0">
           <div ref={containerRef} className="w-full">
             {loading && (
               <div className="flex justify-center py-8">
@@ -307,14 +365,31 @@ export default function Home() {
       </div>
 
       {/* Preview Pane */}
-      {selectedPost && (
-        <div className="fixed top-0 right-0 bottom-0 w-[40%] min-w-[400px] bg-zinc-900 border-l border-zinc-800 shadow-2xl z-50">
-          <PostPreview
-            post={selectedPost}
-            onClose={() => setSelectedPostId(null)}
-          />
-        </div>
-      )}
+      {selectedPost && (() => {
+        const currentIndex = posts.findIndex(p => p.id === selectedPostId);
+        const hasPrevious = currentIndex > 0;
+        const hasNext = currentIndex < posts.length - 1;
+
+        const handleNavigate = (direction: 'prev' | 'next') => {
+          if (direction === 'prev' && hasPrevious) {
+            setSelectedPostId(posts[currentIndex - 1].id);
+          } else if (direction === 'next' && hasNext) {
+            setSelectedPostId(posts[currentIndex + 1].id);
+          }
+        };
+
+        return (
+          <div className="fixed top-0 right-0 bottom-0 w-full md:w-[40%] md:min-w-[400px] bg-zinc-900 border-l border-zinc-800 shadow-2xl z-50">
+            <PostPreview
+              post={selectedPost}
+              onClose={() => setSelectedPostId(null)}
+              onNavigate={handleNavigate}
+              hasPrevious={hasPrevious}
+              hasNext={hasNext}
+            />
+          </div>
+        );
+      })()}
     </main>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { ExternalLink, Calendar, Download, ChevronUp, ChevronDown, X } from "lucide-react";
+import { ExternalLink, Calendar, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 interface Post {
     id: number;
@@ -18,12 +18,16 @@ interface Post {
 interface PostPreviewProps {
     post: Post;
     onClose: () => void;
+    onNavigate?: (direction: 'prev' | 'next') => void;
+    hasPrevious?: boolean;
+    hasNext?: boolean;
 }
 
-export default function PostPreview({ post, onClose }: PostPreviewProps) {
+export default function PostPreview({ post, onClose, onNavigate, hasPrevious = false, hasNext = false }: PostPreviewProps) {
     const [localImages, setLocalImages] = useState<string[]>([]);
     const [localVideos, setLocalVideos] = useState<string[]>([]);
     const [activeIndex, setActiveIndex] = useState(0);
+    const [mediaErrors, setMediaErrors] = useState<Set<number>>(new Set());
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     // Reset state when post changes
@@ -31,6 +35,7 @@ export default function PostPreview({ post, onClose }: PostPreviewProps) {
         setLocalImages([]);
         setLocalVideos([]);
         setActiveIndex(0);
+        setMediaErrors(new Set());
 
         if (scrollContainerRef.current) {
             scrollContainerRef.current.scrollTop = 0;
@@ -78,6 +83,11 @@ export default function PostPreview({ post, onClose }: PostPreviewProps) {
         }
     };
 
+    const handleMediaError = (index: number, src: string) => {
+        console.error(`Failed to load media at index ${index}: ${src}`);
+        setMediaErrors(prev => new Set(prev).add(index));
+    };
+
     return (
         <div className="h-full flex flex-col bg-zinc-900 border-l border-zinc-800">
             {/* Header */}
@@ -100,12 +110,37 @@ export default function PostPreview({ post, onClose }: PostPreviewProps) {
                         </a>
                     </div>
                 </div>
-                <button
-                    onClick={onClose}
-                    className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors"
-                >
-                    <X size={20} />
-                </button>
+
+                {/* Navigation and Close Buttons */}
+                <div className="flex items-center gap-2">
+                    {onNavigate && (
+                        <>
+                            <button
+                                onClick={() => onNavigate('prev')}
+                                disabled={!hasPrevious}
+                                className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                title="Previous Post"
+                            >
+                                <ChevronLeft size={20} />
+                            </button>
+                            <button
+                                onClick={() => onNavigate('next')}
+                                disabled={!hasNext}
+                                className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                title="Next Post"
+                            >
+                                <ChevronRight size={20} />
+                            </button>
+                        </>
+                    )}
+                    <button
+                        onClick={onClose}
+                        className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors"
+                        title="Close"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
             </div>
 
             {/* Content Area - Vertical Carousel */}
@@ -122,33 +157,31 @@ export default function PostPreview({ post, onClose }: PostPreviewProps) {
                             {allMedia.map((media, idx) => (
                                 <div
                                     key={`${media.type}-${idx}`}
-                                    className="w-full h-full snap-center flex items-center justify-center p-4"
+                                    className="w-full h-full snap-center flex items-center justify-center"
                                 >
-                                    {media.type === 'video' ? (
-                                        <div className="relative w-full h-full flex items-center justify-center">
-                                            <video
-                                                controls
-                                                className="max-w-full max-h-full object-contain"
-                                                poster={media.poster}
-                                            >
-                                                <source src={media.src} type="video/mp4" />
-                                                Your browser does not support the video tag.
-                                            </video>
-                                            <a
-                                                href={media.src}
-                                                download
-                                                className="absolute bottom-4 right-4 p-2 bg-black/60 rounded-full text-white hover:bg-black/80 transition-colors"
-                                                title="Download Video"
-                                            >
-                                                <Download size={20} />
-                                            </a>
+                                    {mediaErrors.has(idx) ? (
+                                        <div className="text-zinc-500 text-center p-4">
+                                            <p>Failed to load {media.type}</p>
+                                            <p className="text-xs mt-2">Try refreshing the page</p>
                                         </div>
+                                    ) : media.type === 'video' ? (
+                                        <video
+                                            controls
+                                            className="w-full h-full object-contain bg-black"
+                                            poster={media.poster}
+                                            preload="metadata"
+                                            onError={() => handleMediaError(idx, media.src)}
+                                        >
+                                            <source src={media.src} type="video/mp4" />
+                                            Your browser does not support the video tag.
+                                        </video>
                                     ) : (
                                         <div className="relative w-full h-full flex items-center justify-center">
                                             <img
                                                 src={media.src}
                                                 alt={`Content ${idx}`}
                                                 className="max-w-full max-h-full object-contain"
+                                                onError={() => handleMediaError(idx, media.src)}
                                             />
                                             <a
                                                 href={media.src}

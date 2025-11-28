@@ -33,13 +33,13 @@ export default function PostCard({ post, onClick, isSelected }: PostCardProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className={`group cursor-pointer ${isSelected ? 'ring-2 ring-blue-500 rounded-xl' : ''}`}
+      className={`group cursor-pointer ${isSelected ? 'ring-2 ring-blue-500 md:rounded-xl' : ''}`}
       onClick={onClick}
     >
       <div className="block">
 
         {/* Fixed-height card to enable reliable virtual scrolling */}
-        <div className="bg-zinc-900 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-zinc-800 hover:border-zinc-600 hover:-translate-y-1 h-[640px] sm:h-[480px] md:h-[400px] flex flex-col">
+        <div className="bg-zinc-900 md:rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 border border-zinc-800 hover:border-zinc-600 hover:-translate-y-1 h-[640px] sm:h-[480px] md:h-[400px] flex flex-col">
           {/* image area: fixed portion (about 2/3) */}
           <div className="relative flex-1 w-full">
             {post.thumbnail ? (

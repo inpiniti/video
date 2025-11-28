@@ -47,17 +47,42 @@ export async function GET(request: Request) {
     }
 
     const stat = await fs.stat(filePath);
-    const fileStream = fs.createReadStream(filePath);
-
-    // Determine mime type
     const contentType = mime.getType(filePath) || "application/octet-stream";
 
-    // @ts-expect-error - Readable stream / fs.ReadStream is compatible with NextResponse body
-    return new NextResponse(fileStream, {
+    // Handle Range requests for video streaming
+    const range = request.headers.get("range");
+
+    if (range && type === "video") {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+      const chunksize = (end - start) + 1;
+
+      const fileBuffer = await fs.readFile(filePath);
+      const chunk = fileBuffer.slice(start, end + 1);
+
+      return new NextResponse(chunk, {
+        status: 206,
+        headers: {
+          "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": chunksize.toString(),
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    }
+
+    // For images or non-range requests, read entire file into buffer
+    // This prevents file descriptor leaks from unclosed streams
+    const fileBuffer = await fs.readFile(filePath);
+
+    return new NextResponse(fileBuffer, {
       headers: {
         "Content-Type": contentType,
         "Content-Length": stat.size.toString(),
         "Cache-Control": "public, max-age=31536000, immutable",
+        "Accept-Ranges": "bytes",
       },
     });
   } catch (error) {
